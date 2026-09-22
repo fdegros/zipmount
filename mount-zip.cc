@@ -502,7 +502,7 @@ static int ProcessArg(void* data,
 
     case KEY_VERSION:
       std::cout << PROGRAM_NAME " version: " PROGRAM_VERSION "\n"
-                << "libzip version: " LIBZIP_VERSION "\n"
+                << "libzip version: " << zip_libzip_version() << "\n"
                 << std::flush;
       fuse_opt_add_arg(outargs, "--version");
 #if FUSE_USE_VERSION >= 30
