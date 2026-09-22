@@ -271,4 +271,27 @@ TEST(ExtraFieldTest, NtfsExtraFieldParse) {
   EXPECT_EQ(f.ctime.tv_nsec, 0xFF * 100);
 }
 
+// A zero component means "not set", and should be skipped rather than
+// treated as an invalid NTFS FILETIME that fails the whole field.
+TEST(ExtraFieldTest, NtfsExtraFieldParseZeroAtimeCtime) {
+  const u8 data[] = {
+      0x00, 0x00, 0x00, 0x00,                          // reserved
+      0x01, 0x00,                                      // tag 1
+      0x18, 0x00,                                      // size
+      0x2A, 0x46, 0xE1, 0x0C, 0x60, 0x22, 0xDA, 0x01,  // mtime
+      0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,  // atime (not set)
+      0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,  // ctime (not set)
+  };
+
+  ExtraFields f;
+  EXPECT_TRUE(f.Parse(FieldId::NTFS_TIMESTAMP, data));
+
+  EXPECT_EQ(f.mtime.tv_sec, 1701219888);
+  EXPECT_EQ(f.mtime.tv_nsec, 914589800);
+  EXPECT_EQ(f.atime.tv_sec, -1);
+  EXPECT_EQ(f.atime.tv_nsec, 0);
+  EXPECT_EQ(f.ctime.tv_sec, -1);
+  EXPECT_EQ(f.ctime.tv_nsec, 0);
+}
+
 }  // namespace

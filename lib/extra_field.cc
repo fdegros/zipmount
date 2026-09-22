@@ -207,10 +207,19 @@ bool Parse(FieldId const id, Bytes b, Node* const node) try {
         }
 
         if (tag == 0x0001) {
+          // A component of 0 means "not set" and doesn't convert to a valid
+          // NTFS FILETIME (which is relative to 1601-01-01). Skip it rather
+          // than letting the whole field fail to parse because of it.
           Bytes p = b.first(size);
-          node->mtime = ntfs2timespec(Read<u64>(p));
-          node->atime = ntfs2timespec(Read<u64>(p));
-          node->ctime = ntfs2timespec(Read<u64>(p));
+          if (u64 const v = Read<u64>(p)) {
+            node->mtime = ntfs2timespec(v);
+          }
+          if (u64 const v = Read<u64>(p)) {
+            node->atime = ntfs2timespec(v);
+          }
+          if (u64 const v = Read<u64>(p)) {
+            node->ctime = ntfs2timespec(v);
+          }
           has_times = true;
         }
 
