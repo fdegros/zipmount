@@ -69,6 +69,27 @@ def GetFuseMajorVersion():
 fuse_major_version = GetFuseMajorVersion()
 logging.info(f'FUSE major version: {fuse_major_version}')
 
+
+def GetLibZipVersion():
+    for line in sr.stdout.split('\n'):
+        if line.startswith('libzip '):
+            version_str = line.split()[1]
+            version = []
+            for part in version_str.split('.'):
+                # Strip any non-digit suffix (e.g. the "dev" in "3.9.0dev").
+                digits = ''
+                for c in part:
+                    if not c.isdigit():
+                        break
+                    digits += c
+                version.append(int(digits) if digits else 0)
+            return version
+    return [0, 0, 0]
+
+
+lib_zip_version = GetLibZipVersion()
+logging.info(f'libzip version: {lib_zip_version}')
+
 on_mac = sys.platform.startswith('darwin')
 on_linux = sys.platform.startswith('linux')
 on_freebsd = sys.platform.startswith('freebsd')
