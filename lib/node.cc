@@ -18,8 +18,10 @@
 
 #include <algorithm>
 #include <cassert>
+#include <cstdio>
 #include <ctime>
 #include <memory>
+#include <tuple>
 #include <vector>
 
 #include <boost/functional/hash.hpp>
@@ -309,6 +311,43 @@ Node* Node::GetUniqueChildDirectory() {
   return &*it;
 }
 
+namespace {
+
+using Version = std::tuple<int, int, int>;
+
+// Gets the runtime libzip version.
+Version GetLibZipVersion() {
+  int major = 0, minor = 0, micro = 0;
+  std::sscanf(zip_libzip_version(), "%d.%d.%d", &major, &minor, &micro);
+  return Version(major, minor, micro);
+}
+
+// Returns true if `file` (entry `id` of `zip`) can be safely passed to
+// zip_fseek().
+bool IsSeekable(zip_t* const zip, i64 const id, zip_file_t* const file) {
+#if LIBZIP_VERSION_MAJOR > 1 || \
+    LIBZIP_VERSION_MAJOR == 1 && LIBZIP_VERSION_MINOR >= 9
+  // zip_file_is_seekable() was introduced in libzip 1.9.0, but it can only be
+  // trusted for libzip > 1.11.4 because of:
+  // https://github.com/nih-at/libzip/issues/583
+  // https://github.com/fdegros/zipmount/issues/1
+  static const bool trusted = GetLibZipVersion() > Version(1, 11, 4);
+  if (trusted) {
+    return zip_file_is_seekable(file) > 0;
+  }
+#endif
+
+  // Fallback way of determining if a file is seekable.
+  zip_stat_t st;
+  return zip_stat_index(zip, static_cast<zip_uint64_t>(id), 0, &st) == 0 &&
+         (st.valid & ZIP_STAT_COMP_METHOD) != 0 &&
+         st.comp_method == ZIP_CM_STORE &&
+         (st.valid & ZIP_STAT_ENCRYPTION_METHOD) != 0 &&
+         st.encryption_method == ZIP_EM_NONE;
+}
+
+}  // namespace
+
 bool Node::CacheAll(std::function<void(ssize_t)> progress) {
   Node* const t = GetTarget();
   assert(!t->reader);
@@ -320,21 +359,7 @@ bool Node::CacheAll(std::function<void(ssize_t)> progress) {
   ZipFile file = Reader::Open(t->zip, t->id);
   assert(file);
 
-#if LIBZIP_VERSION_MAJOR > 1 ||      \
-    LIBZIP_VERSION_MAJOR == 1 &&     \
-        (LIBZIP_VERSION_MINOR > 9 || \
-         LIBZIP_VERSION_MINOR == 9 && LIBZIP_VERSION_MICRO >= 1)
-  // For libzip >= 1.9.1
-  const bool seekable = zip_file_is_seekable(file.get()) > 0;
-#else
-  // For libzip < 1.9.1
-  zip_stat_t st;
-  const bool seekable = zip_stat_index(t->zip, t->id, 0, &st) == 0 &&
-                        (st.valid & ZIP_STAT_COMP_METHOD) != 0 &&
-                        st.comp_method == ZIP_CM_STORE &&
-                        (st.valid & ZIP_STAT_ENCRYPTION_METHOD) != 0 &&
-                        st.encryption_method == ZIP_EM_NONE;
-#endif
+  const bool seekable = IsSeekable(t->zip, t->id, file.get());
 
   if (seekable) {
     LOG(DEBUG) << "No need to cache " << *this << ": File is seekable";
@@ -360,21 +385,7 @@ Reader::Ptr Node::GetReader() {
   ZipFile file = Reader::Open(t->zip, t->id);
   assert(file);
 
-#if LIBZIP_VERSION_MAJOR > 1 ||      \
-    LIBZIP_VERSION_MAJOR == 1 &&     \
-        (LIBZIP_VERSION_MINOR > 9 || \
-         LIBZIP_VERSION_MINOR == 9 && LIBZIP_VERSION_MICRO >= 1)
-  // For libzip >= 1.9.1
-  const bool seekable = zip_file_is_seekable(file.get()) > 0;
-#else
-  // For libzip < 1.9.1
-  zip_stat_t st;
-  const bool seekable = zip_stat_index(t->zip, t->id, 0, &st) == 0 &&
-                        (st.valid & ZIP_STAT_COMP_METHOD) != 0 &&
-                        st.comp_method == ZIP_CM_STORE &&
-                        (st.valid & ZIP_STAT_ENCRYPTION_METHOD) != 0 &&
-                        st.encryption_method == ZIP_EM_NONE;
-#endif
+  const bool seekable = IsSeekable(t->zip, t->id, file.get());
 
   Reader::Ptr reader(seekable
                          ? new UnbufferedReader(std::move(file), t->id, t->size)
