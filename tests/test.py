@@ -71,16 +71,17 @@ logging.info(f'FUSE major version: {fuse_major_version}')
 
 on_mac = sys.platform.startswith('darwin')
 on_linux = sys.platform.startswith('linux')
+on_freebsd = sys.platform.startswith('freebsd')
 
 # On macOS, using the default TMPDIR causes Finder to use CPU excessively.
 tmp_dir_base = '/tmp' if on_mac else None
 
-has_memcache = not on_mac
+has_memcache = on_linux
 if not has_memcache:
     logging.info('Will skip tests relying on memcache')
 
-has_xattrs = not on_mac
-if not has_memcache:
+has_xattrs = not on_mac and not on_freebsd
+if not has_xattrs:
     logging.info('Will skip tests for xattrs')
 
 has_holes = not on_mac and fuse_major_version >= 3
@@ -253,8 +254,9 @@ if not is_fast:
 
 def Unmount(mount_point):
     # Linux: -l (lazy) detaches immediately even if mount is busy.
-    # macOS: -l is unsupported; -f (force) is the closest equivalent.
-    if on_mac:
+    # macOS and FreeBSD: -l is unsupported; -f (force) is the closest
+    # equivalent.
+    if on_mac or on_freebsd:
         subprocess.run(['umount', '-f', mount_point], check=True)
     else:
         subprocess.run(['umount', '-l', mount_point], check=True)
@@ -302,8 +304,9 @@ def MountArchiveAndGetTree(zip_names,
                            options=[],
                            password='',
                            use_md5=True,
-                           get_tree=True):
-    with MountArchive(zip_names, options, password) as mount_point:
+                           get_tree=True,
+                           env=env):
+    with MountArchive(zip_names, options=options, password=password, env=env) as mount_point:
         tree = GetTree(mount_point, use_md5=use_md5) if get_tree else None
         return tree, os.statvfs(mount_point)
 
@@ -319,7 +322,7 @@ def MountArchiveAndCheckTree(
     password='',
     strict=True,
     use_md5=True,
-):
+    env=env):
     s = f'Test {zip_names!r}'
     if options: s += f', options = {" ".join(options)!r}'
     if password: s += f', password = {password!r}'
@@ -329,6 +332,7 @@ def MountArchiveAndCheckTree(
                                               options=options,
                                               password=password,
                                               use_md5=use_md5,
+                                              env=env,
                                               get_tree=want_tree is not None)
 
         want_block_size = 512
@@ -364,7 +368,8 @@ def MountArchiveAndCheckTree(
 def CheckArchiveMountingError(zip_names,
                               want_error_code,
                               options=[],
-                              password=''):
+                              password='',
+                              env=env):
     s = f'Test {zip_names!r}'
     if options: s += f', options = {" ".join(options)!r}'
     if password: s += f', password = {password!r}'
@@ -372,7 +377,8 @@ def CheckArchiveMountingError(zip_names,
     try:
         got_tree, _ = MountArchiveAndGetTree(zip_names,
                                              options=options,
-                                             password=password)
+                                             password=password,
+                                             env=env)
         LogError(f'Want error, Got tree: {got_tree}')
     except subprocess.CalledProcessError as e:
         if e.returncode != want_error_code:
@@ -3118,3 +3124,4 @@ if error_count:
     sys.exit(1)
 else:
     logging.info('PASS: All tests passed')
+
