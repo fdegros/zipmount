@@ -20,9 +20,7 @@
 #include <gtest/gtest.h>
 
 #include <sys/stat.h>
-#ifdef __APPLE__
-#include <sys/types.h>
-#else
+#if __has_include(<sys/sysmacros.h>)
 #include <sys/sysmacros.h>
 #endif
 
