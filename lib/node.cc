@@ -313,28 +313,31 @@ Node* Node::GetUniqueChildDirectory() {
 
 namespace {
 
-using Version = std::tuple<int, int, int>;
-
-// Gets the runtime libzip version.
-Version GetLibZipVersion() {
-  int major = 0, minor = 0, micro = 0;
-  std::sscanf(zip_libzip_version(), "%d.%d.%d", &major, &minor, &micro);
-  return Version(major, minor, micro);
-}
-
 // Returns true if `file` (entry `id` of `zip`) can be safely passed to
 // zip_fseek().
 bool IsSeekable(zip_t* const zip, i64 const id, zip_file_t* const file) {
 #if LIBZIP_VERSION_MAJOR > 1 || \
     LIBZIP_VERSION_MAJOR == 1 && LIBZIP_VERSION_MINOR >= 9
+
+  using Version = std::tuple<int, int, int>;
+
+  // Gets the runtime libzip version.
+  const auto get_libzip_version = [] {
+    int major = 0, minor = 0, micro = 0;
+    std::sscanf(zip_libzip_version(), "%d.%d.%d", &major, &minor, &micro);
+    return Version(major, minor, micro);
+  };
+
   // zip_file_is_seekable() was introduced in libzip 1.9.0, but it can only be
   // trusted for libzip > 1.11.4 because of:
   // https://github.com/nih-at/libzip/issues/583
   // https://github.com/fdegros/zipmount/issues/1
-  static const bool trusted = GetLibZipVersion() > Version(1, 11, 4);
+  static const bool trusted = get_libzip_version() > Version(1, 11, 4);
   if (trusted) {
     return zip_file_is_seekable(file) > 0;
   }
+#else
+  (void)file;
 #endif
 
   // Fallback way of determining if a file is seekable.
