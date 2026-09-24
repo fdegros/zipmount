@@ -2660,15 +2660,18 @@ def TestArchiveWithSpecialFiles():
     MountArchiveAndCheckTree(zip_name, want_tree, want_blocks=17, want_inodes=15)
 
     # Check that the inode numbers of hardlinks match
-    got_tree, _ = MountArchiveAndGetTree(zip_name)
-    want_ino = got_tree['regular']['ino']
-    if not want_ino > 0:
-        LogError(f'Want positive ino, Got: {want_ino}')
+    try:
+        got_tree, _ = MountArchiveAndGetTree(zip_name)
+        want_ino = got_tree['regular']['ino']
+        if not want_ino > 0:
+            LogError(f'Want positive ino, Got: {want_ino}')
 
-    for link_name in ['z-hardlink1', 'z-hardlink2']:
-        got_ino = got_tree[link_name]['ino']
-        if got_ino != want_ino:
-            LogError(f'Want ino: {want_ino}, Got: {got_ino}')
+        for link_name in ['z-hardlink1', 'z-hardlink2']:
+            got_ino = got_tree[link_name]['ino']
+            if got_ino != want_ino:
+                LogError(f'Want ino: {want_ino}, Got: {got_ino}')
+    except subprocess.CalledProcessError as e:
+        LogError(f'Cannot test {zip_name!r}: {e.stderr}')
 
     # Test -o nosymlinks
     want_tree = {
