@@ -69,6 +69,23 @@ TEST(ExtraFieldTest, TimestampBad) {
   EXPECT_EQ(f.ctime.tv_nsec, 0);
 }
 
+// A pre-1970 timestamp is signed 32-bit per the Info-Zip spec, and must
+// not be reinterpreted as a huge unsigned (post-2038) one.
+TEST(ExtraFieldTest, TimestampNegative) {
+  const u8 data[] = {1 | 2 | 4,       //
+                     0xFE, 0xFF, 0xFF, 0xFF,   // mtime = -2
+                     0x9C, 0xFF, 0xFF, 0xFF,   // atime = -100
+                     0x38, 0xFF, 0xFF, 0xFF};  // ctime = -200
+  ExtraFields f;
+  EXPECT_TRUE(f.Parse(FieldId::UNIX_TIMESTAMP, data));
+  EXPECT_EQ(f.mtime.tv_sec, -2);
+  EXPECT_EQ(f.mtime.tv_nsec, 0);
+  EXPECT_EQ(f.atime.tv_sec, -100);
+  EXPECT_EQ(f.atime.tv_nsec, 0);
+  EXPECT_EQ(f.ctime.tv_sec, -200);
+  EXPECT_EQ(f.ctime.tv_nsec, 0);
+}
+
 // Parse PKWARE Unix Extra Field - regular file
 TEST(ExtraFieldTest, UnixPkwareRegular) {
   const u8 data[] = {
@@ -90,6 +107,24 @@ TEST(ExtraFieldTest, UnixPkwareRegular) {
   EXPECT_EQ(f.gid, 0x0304);
   EXPECT_EQ(f.dev, -1);
   EXPECT_TRUE(f.target.empty());
+}
+
+// A pre-1970 timestamp is signed 32-bit, and must not be reinterpreted as
+// a huge unsigned (post-2038) one.
+TEST(ExtraFieldTest, UnixPkwareNegativeTimestamps) {
+  const u8 data[] = {
+      0x9C, 0xFF, 0xFF, 0xFF,  // atime = -100
+      0xFE, 0xFF, 0xFF, 0xFF,  // mtime = -2
+      0x02, 0x01,              // UID
+      0x04, 0x03               // GID
+  };
+
+  ExtraFields f(S_IFREG | 0666);
+  EXPECT_TRUE(f.Parse(FieldId::PKWARE_UNIX, data));
+  EXPECT_EQ(f.atime.tv_sec, -100);
+  EXPECT_EQ(f.atime.tv_nsec, 0);
+  EXPECT_EQ(f.mtime.tv_sec, -2);
+  EXPECT_EQ(f.mtime.tv_nsec, 0);
 }
 
 // Parse PKWARE Unix Extra Field - block device
@@ -169,6 +204,19 @@ TEST(ExtraFieldTest, UnixInfozip1) {
     EXPECT_EQ(f.uid, -1);
     EXPECT_EQ(f.gid, -1);
   }
+}
+
+// A pre-1970 timestamp is signed 32-bit, and must not be reinterpreted as
+// a huge unsigned (post-2038) one.
+TEST(ExtraFieldTest, UnixInfozip1Negative) {
+  const u8 data[] = {0x9C, 0xFF, 0xFF, 0xFF,   // atime = -100
+                     0xFE, 0xFF, 0xFF, 0xFF};  // mtime = -2
+  ExtraFields f;
+  EXPECT_TRUE(f.Parse(FieldId::INFOZIP_UNIX_1, data));
+  EXPECT_EQ(f.atime.tv_sec, -100);
+  EXPECT_EQ(f.atime.tv_nsec, 0);
+  EXPECT_EQ(f.mtime.tv_sec, -2);
+  EXPECT_EQ(f.mtime.tv_nsec, 0);
 }
 
 // Parse Info-ZIP Unix Extra Field (type2)
@@ -290,6 +338,68 @@ TEST(ExtraFieldTest, NtfsExtraFieldParseZeroAtimeCtime) {
   EXPECT_EQ(f.atime.tv_nsec, 0);
   EXPECT_EQ(f.ctime.tv_sec, -1);
   EXPECT_EQ(f.ctime.tv_nsec, 0);
+}
+
+// FILETIME has no sign ambiguity (it's unsigned ticks since 1601-01-01),
+// so a value representing a pre-1970 date is perfectly legitimate and
+// must not make the whole field fail to parse.
+TEST(ExtraFieldTest, NtfsExtraFieldParseNegative) {
+  const u8 data[] = {
+      0x00, 0x00, 0x00, 0x00,                          // reserved
+      0x01, 0x00,                                      // tag 1
+      0x18, 0x00,                                      // size
+      0x00, 0x53, 0x0D, 0xD4, 0xDE, 0xB1, 0x9D, 0x01,  // mtime = -2s
+      0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,  // atime (not set)
+      0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,  // ctime (not set)
+  };
+
+  ExtraFields f;
+  EXPECT_TRUE(f.Parse(FieldId::NTFS_TIMESTAMP, data));
+
+  EXPECT_EQ(f.mtime.tv_sec, -2);
+  EXPECT_EQ(f.mtime.tv_nsec, 0);
+}
+
+// A negative, non-second-aligned FILETIME value must still decompose into
+// a timespec with tv_nsec in [0, 999'999'999) - i.e. floor division, not
+// truncation toward zero - with the sign folded entirely into tv_sec.
+TEST(ExtraFieldTest, NtfsExtraFieldParseNegativeSubSecond) {
+  const u8 data[] = {
+      0x00, 0x00, 0x00, 0x00,                          // reserved
+      0x01, 0x00,                                      // tag 1
+      0x18, 0x00,                                      // size
+      0xF1, 0x7F, 0x3E, 0xD5, 0xDE, 0xB1, 0x9D, 0x01,  // mtime = -1.5us
+      0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,  // atime (not set)
+      0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,  // ctime (not set)
+  };
+
+  ExtraFields f;
+  EXPECT_TRUE(f.Parse(FieldId::NTFS_TIMESTAMP, data));
+
+  EXPECT_EQ(f.mtime.tv_sec, -1);
+  EXPECT_EQ(f.mtime.tv_nsec, 999998500);
+}
+
+// A FILETIME value with the top bit set (>= 2^63) isn't a real date - it
+// would be circa year 30828 - and gets reinterpreted as a negative i64 by
+// the time it reaches ntfs2timespec(). Rejecting it avoids a signed
+// integer overflow when subtracting the (positive) 1601->1970 offset from
+// an already very negative value.
+TEST(ExtraFieldTest, NtfsExtraFieldParseHugeRejected) {
+  const u8 data[] = {
+      0x00, 0x00, 0x00, 0x00,                          // reserved
+      0x01, 0x00,                                      // tag 1
+      0x18, 0x00,                                      // size
+      0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x80,  // mtime = 2^63 + 1
+      0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,  // atime (not set)
+      0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,  // ctime (not set)
+  };
+
+  ExtraFields f;
+  EXPECT_FALSE(f.Parse(FieldId::NTFS_TIMESTAMP, data));
+
+  EXPECT_EQ(f.mtime.tv_sec, -1);
+  EXPECT_EQ(f.mtime.tv_nsec, 0);
 }
 
 }  // namespace

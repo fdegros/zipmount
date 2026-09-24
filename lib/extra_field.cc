@@ -39,6 +39,7 @@ using u8 = std::uint8_t;
 using u16 = std::uint16_t;
 using u32 = std::uint32_t;
 using u64 = std::uint64_t;
+using i32 = std::int32_t;
 using i64 = std::int64_t;
 
 #if __BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__
@@ -110,21 +111,44 @@ T ReadVariableLength(Bytes& b) {
   return res;
 }
 
+// Reads a 32-bit Unix timestamp. Per the Info-Zip UT/UX and PKWARE-Unix
+// extra field specs, these are signed (to allow pre-1970 dates), so this
+// must sign-extend rather than zero-extend into the wider time_t.
+time_t ReadTime32(Bytes& b) {
+  return static_cast<time_t>(static_cast<i32>(Read<u32>(b)));
+}
+
 timespec ntfs2timespec(i64 const t) {
+  if (t < 0) {
+    throw std::overflow_error("NTFS time stamp is negative");
+  }
+
   i64 const offset = static_cast<i64>(369 * 365 + 89) * 24 * 3600 * 10'000'000;
+  i64 const value = t - offset;
 
-  if (t < offset) {
-    throw std::underflow_error("NTFS time stamp is too small");
+  // FILETIME (t) has no sign ambiguity - it's unsigned ticks since
+  // 1601-01-01 - so a value below |offset| is a perfectly legitimate
+  // pre-1970 date, not malformed data: don't reject it.
+  //
+  // t/% truncate toward zero, not toward -infinity, so for a negative
+  // |value| that isn't an exact multiple of 10'000'000, the remainder
+  // would itself come out negative. Adjust to floor division so tv_nsec
+  // always ends up in [0, 999'999'999], with the sign folded entirely
+  // into tv_sec, as timespec requires.
+  i64 quot = value / 10'000'000;
+  i64 rem = value % 10'000'000;
+  if (rem < 0) {
+    --quot;
+    rem += 10'000'000;
   }
 
-  const auto dm = std::div(t - offset, static_cast<i64>(10'000'000));
-
-  if (dm.quot > std::numeric_limits<time_t>::max()) {
-    throw std::overflow_error("NTFS time stamp is too big");
+  if (quot > std::numeric_limits<time_t>::max() ||
+      quot < std::numeric_limits<time_t>::min()) {
+    throw std::overflow_error("NTFS time stamp is out of range");
   }
 
-  return {.tv_sec = static_cast<time_t>(dm.quot),
-          .tv_nsec = static_cast<long int>(dm.rem) * 100};
+  return {.tv_sec = static_cast<time_t>(quot),
+          .tv_nsec = static_cast<long int>(rem) * 100};
 }
 
 }  // namespace
@@ -137,26 +161,26 @@ bool Parse(FieldId const id, Bytes b, Node* const node) try {
       const u8 flags = Read<u8>(b);
 
       if (flags & 1) {
-        node->mtime = {.tv_sec = static_cast<time_t>(Read<u32>(b))};
+        node->mtime = {.tv_sec = ReadTime32(b)};
         if (b.empty()) {
           return true;
         }
       }
 
       if (flags & 2) {
-        node->atime = {.tv_sec = static_cast<time_t>(Read<u32>(b))};
+        node->atime = {.tv_sec = ReadTime32(b)};
       }
 
       if (flags & 4) {
-        node->ctime = {.tv_sec = static_cast<time_t>(Read<u32>(b))};
+        node->ctime = {.tv_sec = ReadTime32(b)};
       }
 
       return true;
     }
 
     case FieldId::INFOZIP_UNIX_1:
-      node->atime = {.tv_sec = static_cast<time_t>(Read<u32>(b))};
-      node->mtime = {.tv_sec = static_cast<time_t>(Read<u32>(b))};
+      node->atime = {.tv_sec = ReadTime32(b)};
+      node->mtime = {.tv_sec = ReadTime32(b)};
       [[fallthrough]];
 
     case FieldId::INFOZIP_UNIX_2:
@@ -179,8 +203,8 @@ bool Parse(FieldId const id, Bytes b, Node* const node) try {
       return true;
 
     case FieldId::PKWARE_UNIX:
-      node->atime = {.tv_sec = static_cast<time_t>(Read<u32>(b))};
-      node->mtime = {.tv_sec = static_cast<time_t>(Read<u32>(b))};
+      node->atime = {.tv_sec = ReadTime32(b)};
+      node->mtime = {.tv_sec = ReadTime32(b)};
       node->uid = Read<u16>(b);
       node->gid = Read<u16>(b);
 
