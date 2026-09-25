@@ -905,7 +905,7 @@ void Tree::CreateHardLink(Node* const node, Node* const target) {
   node->dev = node->hardlink_target->dev;
   node->mtime = node->hardlink_target->mtime;
   node->atime = node->hardlink_target->atime;
-  node->ctime = node->hardlink_target->ctime;
+  node->btime = node->hardlink_target->btime;
   node->uid = node->hardlink_target->uid;
   node->gid = node->hardlink_target->gid;
 
@@ -1069,7 +1069,7 @@ void Tree::Trim(Node& a) {
   a.size = p->size;
   a.mtime = p->mtime;
   a.atime = p->atime;
-  a.ctime = p->ctime;
+  a.btime = p->btime;
   a.target = std::move(p->target);
   a.reader = std::move(p->reader);
   a.mode = p->mode;

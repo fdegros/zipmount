@@ -84,6 +84,9 @@ working directory.
 **-o nohardlinks**
 :   Hide hard links.
 
+**-o noatime**
+:   Don't update access times.
+
 **-o dmask=M**
 :   Directory permission mask in octal (default 0022).
 

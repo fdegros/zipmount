@@ -18,8 +18,10 @@
 #define NODE_H
 
 #include <cassert>
+#include <ctime>
 #include <functional>
 #include <iterator>
+#include <limits>
 #include <memory>
 #include <ostream>
 #include <string>
@@ -74,6 +76,31 @@ std::ostream& operator<<(std::ostream& out, FileType t);
 // Type aliases for shorter code.
 using Stat = struct stat;
 
+// An optional timestamp.
+struct Time : timespec {
+  static constexpr time_t no_value = std::numeric_limits<time_t>::min();
+
+  Time(time_t t = no_value) : timespec{.tv_sec = t} {}
+  Time(const timespec& t) : timespec(t) {}
+
+  Time& operator=(const timespec& t) {
+    timespec::operator=(t);
+    return *this;
+  }
+
+  bool HasValue() const { return tv_sec != no_value; }
+
+  const timespec& ValueOr(const timespec& other) const {
+    return HasValue() ? *this : other;
+  }
+
+  static Time Now() {
+    Time now;
+    clock_gettime(CLOCK_REALTIME, &now);
+    return now;
+  }
+};
+
 // A node of the virtual file system: either a directory or a file.
 struct Node {
   // Nodes are dynamically allocated and passed around by unique_ptr when
@@ -82,7 +109,7 @@ struct Node {
 
   // Constants and settings shared by all nodes.
   static const blksize_t block_size = 512;
-  static const timespec g_now;
+
   static const uid_t g_uid;
   static const gid_t g_gid;
   static mode_t fmask;
@@ -97,10 +124,7 @@ struct Node {
 #endif
 
   // --- 16-byte members (Highest alignment) ---
-
-  timespec mtime = g_now;
-  timespec atime = g_now;
-  timespec ctime = g_now;
+  Time mtime, atime, btime;
 
   // --- 8-byte members (Fixed size) ---
 

@@ -61,6 +61,10 @@
 #include <syslog.h>
 #include <unistd.h>
 
+#if __has_include(<sys/sysmacros.h>)
+#include <sys/sysmacros.h>
+#endif
+
 #include "error.h"
 #include "log.h"
 #include "node.h"
@@ -70,6 +74,17 @@
 
 #if (LIBZIP_VERSION_MAJOR < 1)
 #error "libzip >= 1.0 is required!"
+#endif
+
+// fuse_operations.statx was only added in libfuse 3.18; older 3.x releases
+// don't declare that struct member at all. FUSE_USE_VERSION only requests an
+// API compatibility level, not the actual installed library version;
+// FUSE_MAJOR_VERSION/FUSE_MINOR_VERSION (from libfuse's own headers, pulled in
+// via <fuse.h> above) report the real one.
+#if defined(__linux__) &&      \
+    (FUSE_MAJOR_VERSION > 3 || \
+     (FUSE_MAJOR_VERSION == 3 && FUSE_MINOR_VERSION >= 18))
+#define FUSE_HAS_STATX 1
 #endif
 
 #ifndef O_PATH
@@ -110,6 +125,7 @@ General options:
     -o nospecials          no special files (FIFOs, sockets, devices)
     -o nosymlinks          no symbolic links
     -o nohardlinks         no hard links
+    -o noatime             don't update access times
     -o enforce_permissions enforce standard UNIX permissions)"
 #if FUSE_USE_VERSION >= 30
          R"(
@@ -142,6 +158,9 @@ struct Param {
 #if FUSE_USE_VERSION >= 30
 static bool g_direct_io = false;
 #endif
+
+// Whether to update access times on read (-o noatime to disable).
+static bool g_atime = true;
 
 Tree* g_tree = nullptr;
 
@@ -206,9 +225,61 @@ struct Operations : fuse_operations {
     return 0;
   }
 
+#ifdef FUSE_HAS_STATX
+  // Converts a timespec to a statx_timestamp.
+  static statx_timestamp ToStatxTimestamp(const timespec& t) {
+    return {.tv_sec = t.tv_sec, .tv_nsec = static_cast<uint32_t>(t.tv_nsec)};
+  }
+
+  // Gets extended file attributes, including the entry's real creation time
+  // (unlike GetAttr's struct stat, which has no field for it on Linux).
+  static int Statx(const char* const path,
+                   int,
+                   int,
+                   struct statx* const st,
+                   fuse_file_info* const fi) {
+    const Node* n;
+
+    if (fi) {
+      FileHandle* const h = reinterpret_cast<FileHandle*>(fi->fh);
+      assert(h);
+      n = h->node;
+      assert(n);
+    } else {
+      assert(path);
+      n = FindNode(path);
+      if (!n) {
+        LOG(DEBUG) << "Cannot stat " << Path(path) << ": No such item";
+        return -ENOENT;
+      }
+    }
+
+    const Stat z = n->GetStat();
+
+    assert(st);
+    *st = {};
+    st->stx_mask = STATX_BASIC_STATS | STATX_BTIME;
+    st->stx_blksize = z.st_blksize;
+    st->stx_nlink = z.st_nlink;
+    st->stx_uid = z.st_uid;
+    st->stx_gid = z.st_gid;
+    st->stx_mode = z.st_mode;
+    st->stx_ino = z.st_ino;
+    st->stx_size = z.st_size;
+    st->stx_blocks = z.st_blocks;
+    st->stx_mtime = ToStatxTimestamp(z.st_mtim);
+    st->stx_atime = ToStatxTimestamp(z.st_atim);
+    st->stx_ctime = ToStatxTimestamp(z.st_ctim);
+    st->stx_btime = ToStatxTimestamp(n->btime.ValueOr(z.st_mtim));
+    st->stx_rdev_major = major(z.st_rdev);
+    st->stx_rdev_minor = minor(z.st_rdev);
+    return 0;
+  }
+#endif
+
   static int OpenDir(const char* const path, fuse_file_info* const fi) {
     assert(path);
-    const Node* const n = FindNode(path);
+    Node* const n = FindNode(path);
     if (!n) {
       LOG(ERROR) << "Cannot open " << Path(path) << ": No such item";
       return -ENOENT;
@@ -240,9 +311,13 @@ struct Operations : fuse_operations {
 #endif
     assert(filler);
     assert(fi);
-    const Node* const n = reinterpret_cast<const Node*>(fi->fh);
+    Node* const n = reinterpret_cast<Node*>(fi->fh);
     assert(n);
     assert(n->IsDir());
+
+    if (g_atime) {
+      n->atime = Time::Now();
+    }
 
 #if FUSE_USE_VERSION >= 30
     const bool plus = (flags & FUSE_READDIR_PLUS) != 0;
@@ -326,8 +401,12 @@ struct Operations : fuse_operations {
     assert(fi);
     FileHandle* const h = reinterpret_cast<FileHandle*>(fi->fh);
     assert(h);
-    const Node* const n = h->node;
+    Node* const n = h->node;
     assert(n);
+
+    if (g_atime) {
+      n->GetTarget()->atime = Time::Now();
+    }
 
     try {
       assert(h->reader);
@@ -427,6 +506,9 @@ struct Operations : fuse_operations {
             .readdir = ReadDir,
 #if FUSE_USE_VERSION >= 30
             .init = Init,
+#ifdef FUSE_HAS_STATX
+            .statx = Statx,
+#endif
 #else
             .flag_nullpath_ok = true,
             .flag_nopath = true,
@@ -454,6 +536,7 @@ enum {
   KEY_NO_SPECIALS,
   KEY_NO_SYMLINKS,
   KEY_NO_HARD_LINKS,
+  KEY_NO_ATIME,
   KEY_DEFAULT_PERMISSIONS,
 #if FUSE_USE_VERSION >= 30
   KEY_DIRECT_IO,
@@ -574,6 +657,10 @@ static int ProcessArg(void* data,
       param.opts.include_hard_links = false;
       return DISCARD;
 
+    case KEY_NO_ATIME:
+      g_atime = false;
+      return DISCARD;
+
     case KEY_DEFAULT_PERMISSIONS:
       Node::enforce_permissions = true;
       return DISCARD;
@@ -659,6 +746,7 @@ int main(int argc, char* argv[]) try {
       FUSE_OPT_KEY("nospecials", KEY_NO_SPECIALS),
       FUSE_OPT_KEY("nosymlinks", KEY_NO_SYMLINKS),
       FUSE_OPT_KEY("nohardlinks", KEY_NO_HARD_LINKS),
+      FUSE_OPT_KEY("noatime", KEY_NO_ATIME),
       FUSE_OPT_KEY("enforce_permissions", KEY_DEFAULT_PERMISSIONS),
       FUSE_OPT_KEY("default_permissions", KEY_DEFAULT_PERMISSIONS),
 #if FUSE_USE_VERSION >= 30

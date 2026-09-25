@@ -161,26 +161,28 @@ bool Parse(FieldId const id, Bytes b, Node* const node) try {
       const u8 flags = Read<u8>(b);
 
       if (flags & 1) {
-        node->mtime = {.tv_sec = ReadTime32(b)};
+        node->mtime = ReadTime32(b);
         if (b.empty()) {
           return true;
         }
       }
 
       if (flags & 2) {
-        node->atime = {.tv_sec = ReadTime32(b)};
+        node->atime = ReadTime32(b);
       }
 
       if (flags & 4) {
-        node->ctime = {.tv_sec = ReadTime32(b)};
+        // Info-ZIP's own spec calls this third value "creation time", not
+        // POSIX ctime (inode change time), which ZIP has no way to record.
+        node->btime = ReadTime32(b);
       }
 
       return true;
     }
 
     case FieldId::INFOZIP_UNIX_1:
-      node->atime = {.tv_sec = ReadTime32(b)};
-      node->mtime = {.tv_sec = ReadTime32(b)};
+      node->atime = ReadTime32(b);
+      node->mtime = ReadTime32(b);
       [[fallthrough]];
 
     case FieldId::INFOZIP_UNIX_2:
@@ -203,8 +205,8 @@ bool Parse(FieldId const id, Bytes b, Node* const node) try {
       return true;
 
     case FieldId::PKWARE_UNIX:
-      node->atime = {.tv_sec = ReadTime32(b)};
-      node->mtime = {.tv_sec = ReadTime32(b)};
+      node->atime = ReadTime32(b);
+      node->mtime = ReadTime32(b);
       node->uid = Read<u16>(b);
       node->gid = Read<u16>(b);
 
@@ -242,7 +244,9 @@ bool Parse(FieldId const id, Bytes b, Node* const node) try {
             node->atime = ntfs2timespec(v);
           }
           if (u64 const v = Read<u64>(p)) {
-            node->ctime = ntfs2timespec(v);
+            // The APPNOTE spec labels this third value "Ctime", but it's a
+            // creation/birth time, not the POSIX inode change-time ctime.
+            node->btime = ntfs2timespec(v);
           }
           has_times = true;
         }

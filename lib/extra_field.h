@@ -57,9 +57,6 @@ bool Parse(FieldId id, Bytes b, Node* node);
 struct ExtraFields : Node {
   ExtraFields(mode_t const mode = 0)
       : Node{
-            .mtime = {.tv_sec = -1},
-            .atime = {.tv_sec = -1},
-            .ctime = {.tv_sec = -1},
             .ino = 0,
             .dev = dev_t(-1),
             .uid = uid_t(-1),

@@ -39,21 +39,19 @@ TEST(ExtraFieldTest, TimestampMtimeAtimePresentLocal) {
   EXPECT_EQ(f.mtime.tv_nsec, 0);
   EXPECT_EQ(f.atime.tv_sec, 0x52C7E372);
   EXPECT_EQ(f.atime.tv_nsec, 0);
-  EXPECT_EQ(f.ctime.tv_sec, -1);
-  EXPECT_EQ(f.ctime.tv_nsec, 0);
+  EXPECT_FALSE(f.btime.HasValue());
 }
 
 // LOCAL extra field with both mtime and creation time present in flags
-TEST(ExtraFieldTest, TimestampMtimeCtimePresentLocal) {
+TEST(ExtraFieldTest, TimestampMtimeBtimePresentLocal) {
   const u8 data[] = {1 | 4, 0xD4, 0x6F, 0xCE, 0x51, 0x72, 0xE3, 0xC7, 0x52};
   ExtraFields f;
   EXPECT_TRUE(f.Parse(FieldId::UNIX_TIMESTAMP, data));
   EXPECT_EQ(f.mtime.tv_sec, 0x51CE6FD4);
   EXPECT_EQ(f.mtime.tv_nsec, 0);
-  EXPECT_EQ(f.atime.tv_sec, -1);
-  EXPECT_EQ(f.atime.tv_nsec, 0);
-  EXPECT_EQ(f.ctime.tv_sec, 0x52C7E372);
-  EXPECT_EQ(f.ctime.tv_nsec, 0);
+  EXPECT_FALSE(f.atime.HasValue());
+  EXPECT_EQ(f.btime.tv_sec, 0x52C7E372);
+  EXPECT_EQ(f.btime.tv_nsec, 0);
 }
 
 // Bad timestamp
@@ -63,27 +61,25 @@ TEST(ExtraFieldTest, TimestampBad) {
   EXPECT_TRUE(f.Parse(FieldId::UNIX_TIMESTAMP, data));
   EXPECT_EQ(f.mtime.tv_sec, 0x52C7E372);
   EXPECT_EQ(f.mtime.tv_nsec, 0);
-  EXPECT_EQ(f.atime.tv_sec, -1);
-  EXPECT_EQ(f.atime.tv_nsec, 0);
-  EXPECT_EQ(f.ctime.tv_sec, -1);
-  EXPECT_EQ(f.ctime.tv_nsec, 0);
+  EXPECT_FALSE(f.atime.HasValue());
+  EXPECT_FALSE(f.btime.HasValue());
 }
 
 // A pre-1970 timestamp is signed 32-bit per the Info-Zip spec, and must
 // not be reinterpreted as a huge unsigned (post-2038) one.
 TEST(ExtraFieldTest, TimestampNegative) {
-  const u8 data[] = {1 | 2 | 4,       //
-                     0xFE, 0xFF, 0xFF, 0xFF,   // mtime = -2
-                     0x9C, 0xFF, 0xFF, 0xFF,   // atime = -100
-                     0x38, 0xFF, 0xFF, 0xFF};  // ctime = -200
+  const u8 data[] = {1 | 2 | 4,                     //
+                     0xFE,      0xFF, 0xFF, 0xFF,   // mtime = -2
+                     0x9C,      0xFF, 0xFF, 0xFF,   // atime = -100
+                     0x38,      0xFF, 0xFF, 0xFF};  // btime = -200
   ExtraFields f;
   EXPECT_TRUE(f.Parse(FieldId::UNIX_TIMESTAMP, data));
   EXPECT_EQ(f.mtime.tv_sec, -2);
   EXPECT_EQ(f.mtime.tv_nsec, 0);
   EXPECT_EQ(f.atime.tv_sec, -100);
   EXPECT_EQ(f.atime.tv_nsec, 0);
-  EXPECT_EQ(f.ctime.tv_sec, -200);
-  EXPECT_EQ(f.ctime.tv_nsec, 0);
+  EXPECT_EQ(f.btime.tv_sec, -200);
+  EXPECT_EQ(f.btime.tv_nsec, 0);
 }
 
 // Parse PKWARE Unix Extra Field - regular file
@@ -101,8 +97,7 @@ TEST(ExtraFieldTest, UnixPkwareRegular) {
   EXPECT_EQ(f.atime.tv_nsec, 0);
   EXPECT_EQ(f.mtime.tv_sec, 0x52C7E372);
   EXPECT_EQ(f.mtime.tv_nsec, 0);
-  EXPECT_EQ(f.ctime.tv_sec, -1);
-  EXPECT_EQ(f.ctime.tv_nsec, 0);
+  EXPECT_FALSE(f.btime.HasValue());
   EXPECT_EQ(f.uid, 0x0102);
   EXPECT_EQ(f.gid, 0x0304);
   EXPECT_EQ(f.dev, -1);
@@ -125,6 +120,7 @@ TEST(ExtraFieldTest, UnixPkwareNegativeTimestamps) {
   EXPECT_EQ(f.atime.tv_nsec, 0);
   EXPECT_EQ(f.mtime.tv_sec, -2);
   EXPECT_EQ(f.mtime.tv_nsec, 0);
+  EXPECT_FALSE(f.btime.HasValue());
 }
 
 // Parse PKWARE Unix Extra Field - block device
@@ -144,8 +140,7 @@ TEST(ExtraFieldTest, UnixPkwareDevice) {
   EXPECT_EQ(f.atime.tv_nsec, 0);
   EXPECT_EQ(f.mtime.tv_sec, 0x5D4576C8);
   EXPECT_EQ(f.mtime.tv_nsec, 0);
-  EXPECT_EQ(f.ctime.tv_sec, -1);
-  EXPECT_EQ(f.ctime.tv_nsec, 0);
+  EXPECT_FALSE(f.btime.HasValue());
   EXPECT_EQ(f.uid, 0x0000);
   EXPECT_EQ(f.gid, 0x0006);
   EXPECT_EQ(f.dev, makedev(8, 1));
@@ -168,8 +163,7 @@ TEST(ExtraFieldTest, UnixPkwareLink) {
   EXPECT_EQ(f.atime.tv_nsec, 0);
   EXPECT_EQ(f.mtime.tv_sec, 0x5D457BA9);
   EXPECT_EQ(f.mtime.tv_nsec, 0);
-  EXPECT_EQ(f.ctime.tv_sec, -1);
-  EXPECT_EQ(f.ctime.tv_nsec, 0);
+  EXPECT_FALSE(f.btime.HasValue());
   EXPECT_EQ(f.uid, 1000);
   EXPECT_EQ(f.gid, 1000);
   EXPECT_EQ(f.dev, -1);
@@ -188,6 +182,7 @@ TEST(ExtraFieldTest, UnixInfozip1) {
     EXPECT_EQ(f.atime.tv_nsec, 0);
     EXPECT_EQ(f.mtime.tv_sec, 0x52C7E372);
     EXPECT_EQ(f.mtime.tv_nsec, 0);
+    EXPECT_FALSE(f.btime.HasValue());
     EXPECT_EQ(f.uid, 0x0102);
     EXPECT_EQ(f.gid, 0x0304);
   }
@@ -201,6 +196,7 @@ TEST(ExtraFieldTest, UnixInfozip1) {
     EXPECT_EQ(f.atime.tv_nsec, 0);
     EXPECT_EQ(f.mtime.tv_sec, 0x51CE6FD4);
     EXPECT_EQ(f.mtime.tv_nsec, 0);
+    EXPECT_FALSE(f.btime.HasValue());
     EXPECT_EQ(f.uid, -1);
     EXPECT_EQ(f.gid, -1);
   }
@@ -217,6 +213,7 @@ TEST(ExtraFieldTest, UnixInfozip1Negative) {
   EXPECT_EQ(f.atime.tv_nsec, 0);
   EXPECT_EQ(f.mtime.tv_sec, -2);
   EXPECT_EQ(f.mtime.tv_nsec, 0);
+  EXPECT_FALSE(f.btime.HasValue());
 }
 
 // Parse Info-ZIP Unix Extra Field (type2)
@@ -293,7 +290,7 @@ TEST(ExtraFieldTest, NtfsExtraFieldParse) {
       0x00, 0x00, 0x00, 0x00,                          // reserved
       0x01, 0x00,                                      // tag 1
       0x18, 0x00,                                      // size
-      0x00, 0x80, 0x3E, 0xD5, 0xDE, 0xB1, 0x9D, 0x01,  // ctime
+      0x00, 0x80, 0x3E, 0xD5, 0xDE, 0xB1, 0x9D, 0x01,  // mtime
       0x00, 0x80, 0x3E, 0xD5, 0xDE, 0xB1, 0x9D, 0x01,  // atime
       0x00, 0x80, 0x3E, 0xD5, 0xDE, 0xB1, 0x9D, 0x01,  // btime
       0xEF, 0xDC,                                      // unknown tag
@@ -301,7 +298,7 @@ TEST(ExtraFieldTest, NtfsExtraFieldParse) {
       0x01, 0x02, 0x03,                                // unhandled data
       0x01, 0x00,                                      // tag 1 (again)
       0x18, 0x00,                                      // size
-      0x1B, 0xFA, 0x1F, 0x5E, 0xF3, 0x21, 0xD5, 0x01,  // ctime
+      0x1B, 0xFA, 0x1F, 0x5E, 0xF3, 0x21, 0xD5, 0x01,  // mtime
       0x87, 0xCB, 0xA9, 0x32, 0x33, 0x8E, 0xC9, 0x01,  // atime
       0xFF, 0x80, 0x3E, 0xD5, 0xDE, 0xB1, 0x9D, 0x01   // btime
   };
@@ -313,20 +310,20 @@ TEST(ExtraFieldTest, NtfsExtraFieldParse) {
   EXPECT_EQ(f.mtime.tv_nsec, 722114700);
   EXPECT_EQ(f.atime.tv_sec, 1234567890);
   EXPECT_EQ(f.atime.tv_nsec, 123456700);
-  EXPECT_EQ(f.ctime.tv_sec, 0);
-  EXPECT_EQ(f.ctime.tv_nsec, 0xFF * 100);
+  EXPECT_EQ(f.btime.tv_sec, 0);
+  EXPECT_EQ(f.btime.tv_nsec, 0xFF * 100);
 }
 
 // A zero component means "not set", and should be skipped rather than
 // treated as an invalid NTFS FILETIME that fails the whole field.
-TEST(ExtraFieldTest, NtfsExtraFieldParseZeroAtimeCtime) {
+TEST(ExtraFieldTest, NtfsExtraFieldParseZeroAtimeBtime) {
   const u8 data[] = {
       0x00, 0x00, 0x00, 0x00,                          // reserved
       0x01, 0x00,                                      // tag 1
       0x18, 0x00,                                      // size
       0x2A, 0x46, 0xE1, 0x0C, 0x60, 0x22, 0xDA, 0x01,  // mtime
       0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,  // atime (not set)
-      0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,  // ctime (not set)
+      0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,  // btime (not set)
   };
 
   ExtraFields f;
@@ -334,10 +331,8 @@ TEST(ExtraFieldTest, NtfsExtraFieldParseZeroAtimeCtime) {
 
   EXPECT_EQ(f.mtime.tv_sec, 1701219888);
   EXPECT_EQ(f.mtime.tv_nsec, 914589800);
-  EXPECT_EQ(f.atime.tv_sec, -1);
-  EXPECT_EQ(f.atime.tv_nsec, 0);
-  EXPECT_EQ(f.ctime.tv_sec, -1);
-  EXPECT_EQ(f.ctime.tv_nsec, 0);
+  EXPECT_FALSE(f.atime.HasValue());
+  EXPECT_FALSE(f.btime.HasValue());
 }
 
 // FILETIME has no sign ambiguity (it's unsigned ticks since 1601-01-01),
@@ -350,7 +345,7 @@ TEST(ExtraFieldTest, NtfsExtraFieldParseNegative) {
       0x18, 0x00,                                      // size
       0x00, 0x53, 0x0D, 0xD4, 0xDE, 0xB1, 0x9D, 0x01,  // mtime = -2s
       0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,  // atime (not set)
-      0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,  // ctime (not set)
+      0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,  // btime (not set)
   };
 
   ExtraFields f;
@@ -370,7 +365,7 @@ TEST(ExtraFieldTest, NtfsExtraFieldParseNegativeSubSecond) {
       0x18, 0x00,                                      // size
       0xF1, 0x7F, 0x3E, 0xD5, 0xDE, 0xB1, 0x9D, 0x01,  // mtime = -1.5us
       0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,  // atime (not set)
-      0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,  // ctime (not set)
+      0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,  // btime (not set)
   };
 
   ExtraFields f;
@@ -392,14 +387,15 @@ TEST(ExtraFieldTest, NtfsExtraFieldParseHugeRejected) {
       0x18, 0x00,                                      // size
       0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x80,  // mtime = 2^63 + 1
       0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,  // atime (not set)
-      0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,  // ctime (not set)
+      0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,  // btime (not set)
   };
 
   ExtraFields f;
   EXPECT_FALSE(f.Parse(FieldId::NTFS_TIMESTAMP, data));
 
-  EXPECT_EQ(f.mtime.tv_sec, -1);
-  EXPECT_EQ(f.mtime.tv_nsec, 0);
+  EXPECT_FALSE(f.mtime.HasValue());
+  EXPECT_FALSE(f.atime.HasValue());
+  EXPECT_FALSE(f.btime.HasValue());
 }
 
 }  // namespace

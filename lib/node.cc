@@ -58,7 +58,14 @@ std::ostream& operator<<(std::ostream& out, const FileType t) {
   }
 }
 
-const timespec Node::g_now = {.tv_sec = time(nullptr)};
+// Time this filesystem was mounted. Used as the default value of every
+// timestamp below, which only matters for nodes not backed by a real archive
+// entry (the root directory, and any intermediate directory implied by a nested
+// path but not itself listed in the archive): those have no real timestamp to
+// derive one from. This means such a directory's displayed timestamps depend on
+// when it was mounted, not on the archive's own contents, unlike every other
+// node's.
+static const Time g_now = Time::Now();
 const uid_t Node::g_uid = getuid();
 const gid_t Node::g_gid = getgid();
 mode_t Node::fmask = 0022;
@@ -85,7 +92,7 @@ void Node::Init() {
     size = st.size;
   }
 
-  mtime = {.tv_sec = st.mtime};
+  mtime = st.mtime;
 
   bool has_pkware_field = false;
 
@@ -131,63 +138,72 @@ void Node::Init() {
 }
 
 Stat Node::GetStat() const {
-  Stat st = {};
-  st.st_ino = ino;
-  st.st_nlink = GetTarget()->nlink;
-  st.st_blksize = block_size;
-  st.st_blocks = GetBlockCount();
-  st.st_size = size;
-  st.st_rdev = dev;
+  Stat z = {};
+  const Node* const t = GetTarget();
+  assert(t);
+  z.st_nlink = t->nlink;
+  assert(z.st_nlink > 0);
+  z.st_ino = ino;
+  z.st_blksize = block_size;
+  z.st_blocks = GetBlockCount();
+  z.st_size = size;
+  z.st_rdev = dev;
+
+  const Time& atime = t->atime;
 
 #if __APPLE__
-  st.st_atimespec = atime;
-  st.st_mtimespec = mtime;
-  st.st_ctimespec = ctime;
+  z.st_ctimespec = z.st_mtimespec = mtime.ValueOr(g_now);
+  z.st_atimespec = atime.ValueOr(z.st_mtimespec);
+  z.st_birthtimespec = btime.ValueOr(z.st_mtimespec);
 #else
-  st.st_atim = atime;
-  st.st_mtim = mtime;
-  st.st_ctim = ctime;
+  z.st_ctim = z.st_mtim = mtime.ValueOr(g_now);
+  z.st_atim = atime.ValueOr(z.st_mtim);
+  // Linux's struct stat has no birthtime field at all (unlike Apple's and
+  // FreeBSD's): that's what the statx FUSE operation is for.
+#ifdef __FreeBSD__
+  z.st_birthtim = btime.ValueOr(z.st_mtim);
+#endif
 #endif
 
   if (enforce_permissions) {
-    st.st_uid = uid;
-    st.st_gid = gid;
-    st.st_mode = mode;
+    z.st_uid = uid;
+    z.st_gid = gid;
+    z.st_mode = mode;
     switch (GetType()) {
       case FileType::Directory:
-        st.st_mode &= ~dmask;
+        z.st_mode &= ~dmask;
         break;
 
       case FileType::Symlink:
         break;
 
       default:
-        st.st_mode &= ~fmask;
+        z.st_mode &= ~fmask;
     }
   } else {
-    st.st_uid = g_uid;
-    st.st_gid = g_gid;
+    z.st_uid = g_uid;
+    z.st_gid = g_gid;
     const FileType ft = GetType();
     switch (ft) {
       case FileType::Directory:
-        st.st_mode = static_cast<mode_t>(S_IFDIR | (0777 & ~dmask));
+        z.st_mode = static_cast<mode_t>(S_IFDIR | (0777 & ~dmask));
         break;
 
       case FileType::Symlink:
-        st.st_mode = static_cast<mode_t>(S_IFLNK | 0777);
+        z.st_mode = static_cast<mode_t>(S_IFLNK | 0777);
         break;
 
       default:
-        st.st_mode = 0666;
+        z.st_mode = 0666;
         if (const mode_t xbits = 0111; (mode & xbits) != 0) {
-          st.st_mode |= xbits;
+          z.st_mode |= xbits;
         }
-        st.st_mode &= ~fmask;
-        SetFileType(&st.st_mode, ft);
+        z.st_mode &= ~fmask;
+        SetFileType(&z.st_mode, ft);
     }
   }
 
-  return st;
+  return z;
 }
 
 std::string Node::GetPath() const {

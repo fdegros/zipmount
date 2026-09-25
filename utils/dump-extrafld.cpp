@@ -30,17 +30,13 @@
 
 #include "lib/extra_field.h"
 
-void PrintTime(const char* const label, const timespec& ts) {
-  if (ts.tv_sec > 0) {
+void PrintTime(const char* const label, const Time& ts) {
+  if (ts.HasValue()) {
     using namespace std::chrono;
     sys_time<nanoseconds> tp(seconds(ts.tv_sec) + nanoseconds(ts.tv_nsec));
     zoned_time local_time(current_zone(), tp);
     std::println("{}{:%F %T %z}", label, local_time);
   }
-}
-
-void PrintTime(const char* const label, time_t const t) {
-  PrintTime(label, timespec{.tv_sec = t, .tv_nsec = 0});
 }
 
 void PrintExtraFields(FieldId id, bool local, Bytes b, mode_t mode) {
@@ -80,7 +76,7 @@ void PrintExtraFields(FieldId id, bool local, Bytes b, mode_t mode) {
   }
   PrintTime("      mtime:  ", f.mtime);
   PrintTime("      atime:  ", f.atime);
-  PrintTime("      ctime:  ", f.ctime);
+  PrintTime("      btime:  ", f.btime);
   if (f.uid != -1) {
     std::println("      UID:    {}", f.uid);
   }

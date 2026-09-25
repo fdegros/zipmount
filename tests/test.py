@@ -16,6 +16,7 @@
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 import argparse
+import ctypes
 import errno
 import hashlib
 import logging
@@ -109,6 +110,80 @@ has_holes = not on_mac and fuse_major_version >= 3
 if not has_holes:
     logging.info('Will skip tests for holes')
 
+if on_linux:
+    # Linux has no birth time (creation time) in the classic stat(2) call, or
+    # in Python's os.stat(): it's only exposed via the statx(2) syscall (added
+    # in kernel 4.11), which Python's os module doesn't wrap. Minimal ctypes
+    # definitions to call it directly, just for the fields actually needed.
+    _libc = ctypes.CDLL('libc.so.6', use_errno=True)
+
+    class _StatxTimestamp(ctypes.Structure):
+        _fields_ = [
+            ('tv_sec', ctypes.c_int64),
+            ('tv_nsec', ctypes.c_uint32),
+            ('__reserved', ctypes.c_int32),
+        ]
+
+    class _Statx(ctypes.Structure):
+        _fields_ = [
+            ('stx_mask', ctypes.c_uint32),
+            ('stx_blksize', ctypes.c_uint32),
+            ('stx_attributes', ctypes.c_uint64),
+            ('stx_nlink', ctypes.c_uint32),
+            ('stx_uid', ctypes.c_uint32),
+            ('stx_gid', ctypes.c_uint32),
+            ('stx_mode', ctypes.c_uint16),
+            ('__spare0', ctypes.c_uint16 * 1),
+            ('stx_ino', ctypes.c_uint64),
+            ('stx_size', ctypes.c_uint64),
+            ('stx_blocks', ctypes.c_uint64),
+            ('stx_attributes_mask', ctypes.c_uint64),
+            ('stx_atime', _StatxTimestamp),
+            ('stx_btime', _StatxTimestamp),
+            ('stx_ctime', _StatxTimestamp),
+            ('stx_mtime', _StatxTimestamp),
+            # The kernel writes a full 256-byte struct; the remaining fields
+            # (rdev/dev major/minor, mount ID, etc.) aren't needed here, but
+            # this padding must still cover them so ctypes doesn't read or
+            # write past the end of the buffer.
+            ('__pad', ctypes.c_uint64 * 16),
+        ]
+
+    _AT_FDCWD = -100
+    _AT_SYMLINK_NOFOLLOW = 0x100
+    _STATX_BTIME = 0x800
+
+
+# Gets the birth time (creation time) of the given path, in nanoseconds since
+# the epoch, matching the precision of the other *_ns stat fields. Returns
+# None if unavailable. `st` is that path's already-fetched (not
+# following symlinks) os.stat_result, reused on platforms that carry birth
+# time there directly.
+def GetBirthTimeNs(path, st):
+    if on_mac or on_freebsd:
+        ns = getattr(st, 'st_birthtime_ns', None)
+        return ns if ns is not None else round(st.st_birthtime * 1_000_000_000)
+
+    if on_linux:
+        buf = _Statx()
+        try:
+            ret = _libc.statx(_AT_FDCWD, os.fsencode(path),
+                               _AT_SYMLINK_NOFOLLOW, _STATX_BTIME,
+                               ctypes.byref(buf))
+        except OSError as e:
+            LogError(f'Cannot get statx birth time for {path!r}: {e}')
+            return None
+        if ret != 0:
+            LogError('Cannot get statx birth time for '
+                      f'{path!r}: {os.strerror(ctypes.get_errno())}')
+            return None
+        if not (buf.stx_mask & _STATX_BTIME):
+            return None
+        return buf.stx_btime.tv_sec * 1_000_000_000 + buf.stx_btime.tv_nsec
+
+    return None
+
+
 # Computes the MD5 hash of the given file.
 # Returns the MD5 hash as an hexadecimal string.
 # Throws OSError if the file cannot be read.
@@ -158,6 +233,7 @@ def GetTree(root, use_md5=True):
             'atime': st.st_atime_ns,
             'mtime': st.st_mtime_ns,
             'ctime': st.st_ctime_ns,
+            'btime': GetBirthTimeNs(path, st),
         }
 
         key = os.path.relpath(path, root)
@@ -248,11 +324,6 @@ def CheckTree(got_tree, want_tree, strict=False):
                     continue
 
                 got_value = got_entry.get(key)
-
-                if key in ('atime', 'mtime',
-                           'ctime') and want_value % 1000000000 == 0:
-                    got_value //= 1000000000
-                    want_value //= 1000000000
 
                 if got_value != want_value:
                     LogError(
@@ -862,7 +933,13 @@ def TestArchiveWithDefaultOptions():
             },
             'README': {
                 'nlink': 1,
+                # atime genuinely differs from mtime in this fixture's own UT
+                # extra field; ctime and btime have no such field and fall
+                # back to mtime.
+                'atime': 1425892392000000000,
                 'mtime': 1265521877000000000,
+                'ctime': 1265521877000000000,
+                'btime': 1265521877000000000,
                 'size': 760,
                 'md5': 'f196d610d1cdf9191b4440863e8d31ab',
             },
@@ -874,13 +951,19 @@ def TestArchiveWithDefaultOptions():
             'a/b/c/d/e/f': {'nlink': 2},
             'a/b/c/d/e/f/g': {
                 'nlink': 1,
+                'atime': 1425893690000000000,
                 'mtime': 1425893690000000000,
+                'ctime': 1425893690000000000,
+                'btime': 1425893690000000000,
                 'size': 32,
                 'md5': '21977dc7948b88fdefd50f77afc9ac7b',
             },
             'a/b/c/d/e/f/g2': {
                 'nlink': 1,
+                'atime': 1425893719000000000,
                 'mtime': 1425893719000000000,
+                'ctime': 1425893719000000000,
+                'btime': 1425893719000000000,
                 'size': 32,
                 'md5': '74ad09827032bc0be935c23c53f8ee29',
             },
@@ -1277,7 +1360,13 @@ def TestArchiveWithDefaultOptions():
             'test.txt': {
                 'mode': '-rw-r--r--',
                 'nlink': 1,
+                # atime genuinely differs from mtime in this fixture's own
+                # NTFS extra field; there's no separate creation time in it,
+                # so btime falls back to mtime.
+                'atime': 1560435723770100400,
                 'mtime': 1560435721722114700,
+                'ctime': 1560435721722114700,
+                'btime': 1560435721722114700,
                 'size': 2600,
                 'errno': 5,
             },
@@ -1496,19 +1585,34 @@ def TestArchiveWithDefaultOptions():
             },
             'unmodified': {
                 'nlink': 1,
+                # No precise extra field on this entry: atime/ctime/btime all
+                # fall back to the (coarse, 2-second-granularity) DOS mtime.
+                'atime': 1564327465000000000,
                 'mtime': 1564327465000000000,
+                'ctime': 1564327465000000000,
+                'btime': 1564327465000000000,
                 'size': 7,
                 'md5': '88e6b9694d2fe3e0a47a898110ed44b6',
             },
             'with-precise': {
                 'nlink': 1,
+                # This entry's NTFS extra field carries a genuinely distinct,
+                # nanosecond-precision creation time, unlike every other entry
+                # in this file: the one case in this whole test run where
+                # btime isn't just mtime's fallback value.
+                'atime': 1532741025123456700,
                 'mtime': 1532741025123456700,
+                'ctime': 1532741025123456700,
+                'btime': 1564326932484994400,
                 'size': 4,
                 'md5': '814fa5ca98406a903e22b43d9b610105',
             },
             'without-precise': {
                 'nlink': 1,
+                'atime': 1532741025000000000,
                 'mtime': 1532741025000000000,
+                'ctime': 1532741025000000000,
+                'btime': 1532741025000000000,
                 'size': 4,
                 'md5': '814fa5ca98406a903e22b43d9b610105',
             },
