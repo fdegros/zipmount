@@ -111,12 +111,28 @@ has_holes = not on_mac and fuse_version >= [3]
 if not has_holes:
     logging.info('Will skip tests for holes')
 
-# mount-zip's own statx FUSE operation - the only way to get a birth time on
-# Linux - needs libfuse >= 3.18 (older versions don't declare the .statx
-# member in fuse_operations at all, matching mount-zip.cc's own FUSE_HAS_STATX
-# check). macOS and FreeBSD get it directly from the classic stat(2) call
-# instead, regardless of libfuse version.
-has_btime = on_mac or on_freebsd or (on_linux and fuse_version >= [3, 18])
+# Getting a birth time out of a FUSE mount depends on the platform's FUSE
+# wire protocol, not just on mount-zip's own code:
+# - Linux: the classic getattr reply (struct fuse_attr) has no birth-time
+#   field at all, on any platform. Linux instead has a separate statx(2)
+#   syscall with its own dedicated FUSE request/reply pair (struct
+#   fuse_statx) that does carry one, needing libfuse >= 3.18 (older versions
+#   don't even declare .statx in fuse_operations - matching mount-zip.cc's
+#   own FUSE_HAS_STATX check).
+# - macOS: assumed to work, via macFUSE's own protocol extension for
+#   creation time (a separate implementation from vanilla libfuse). This is
+#   *not* verified by this project's own CI: the macOS job never runs this
+#   script at all, only the plain unit tests, since macFUSE needs a kernel
+#   extension that requires a reboot and interactive SIP consent - so a
+#   passing macOS CI run says nothing about whether this actually holds.
+#   True if you run this script by hand on a real Mac, though.
+# - FreeBSD: uses vanilla libfuse (fusefs-libs3) and the native fusefs kernel
+#   module, which only speaks the classic getattr protocol - there is no
+#   wire-level channel for birth time here at all, so it can never be
+#   retrieved regardless of what mount-zip itself computes. This one *is*
+#   verified: the FreeBSD CI job does run this script, and did in fact
+#   observe exactly this failure mode before has_btime excluded it.
+has_btime = on_mac or (on_linux and fuse_version >= [3, 18])
 if not has_btime:
     logging.info('Will skip tests for btime')
 
