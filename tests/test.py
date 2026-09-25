@@ -65,7 +65,7 @@ def GetFuseVersion():
             version_str = line.split('version')[-1].strip(': ').split()[0]
             parts = version_str.split('.')
             return [int(part) for part in parts]
-    return 0, 0
+    return [0, 0]
 
 
 fuse_version = GetFuseVersion()
