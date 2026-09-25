@@ -58,17 +58,18 @@ sr = subprocess.run([mount_program, '--version'],
                     encoding='UTF-8')
 
 
-def GetFuseMajorVersion():
+def GetFuseVersion():
     for line in sr.stdout.split('\n'):
         if 'FUSE library version' in line:
             # Handle "FUSE library version 3.x" and "FUSE library version: 3.x"
             version_str = line.split('version')[-1].strip(': ').split()[0]
-            return int(version_str.split('.')[0])
-    return 0
+            parts = version_str.split('.')
+            return [int(part) for part in parts]
+    return 0, 0
 
 
-fuse_major_version = GetFuseMajorVersion()
-logging.info(f'FUSE major version: {fuse_major_version}')
+fuse_version = GetFuseVersion()
+logging.info(f'FUSE version: {fuse_version}')
 
 
 def GetLibZipVersion():
@@ -106,9 +107,18 @@ has_xattrs = not on_mac and not on_freebsd
 if not has_xattrs:
     logging.info('Will skip tests for xattrs')
 
-has_holes = not on_mac and fuse_major_version >= 3
+has_holes = not on_mac and fuse_version >= [3]
 if not has_holes:
     logging.info('Will skip tests for holes')
+
+# mount-zip's own statx FUSE operation - the only way to get a birth time on
+# Linux - needs libfuse >= 3.18 (older versions don't declare the .statx
+# member in fuse_operations at all, matching mount-zip.cc's own FUSE_HAS_STATX
+# check). macOS and FreeBSD get it directly from the classic stat(2) call
+# instead, regardless of libfuse version.
+has_btime = on_mac or on_freebsd or (on_linux and fuse_version >= [3, 18])
+if not has_btime:
+    logging.info('Will skip tests for btime')
 
 if on_linux:
     # Linux has no birth time (creation time) in the classic stat(2) call, or
@@ -321,6 +331,9 @@ def CheckTree(got_tree, want_tree, strict=False):
                     continue
 
                 if not has_holes and key == 'holes':
+                    continue
+
+                if not has_btime and key == 'btime':
                     continue
 
                 got_value = got_entry.get(key)
