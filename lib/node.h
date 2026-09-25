@@ -110,8 +110,6 @@ struct Node {
   // Constants and settings shared by all nodes.
   static const blksize_t block_size = 512;
 
-  static const uid_t g_uid;
-  static const gid_t g_gid;
   static mode_t fmask;
   static mode_t dmask;
   static bool enforce_permissions;
@@ -140,7 +138,7 @@ struct Node {
   i64 size = 0;
 
   // Device number for special files.
-  dev_t dev = 0;
+  dev_t dev = dev_t(-1);
 
   // --- Architecture-dependent members (8 bytes on 64-bit, 4 bytes on 32-bit)
 
@@ -189,8 +187,8 @@ struct Node {
   // Link target (e.g. for symlinks or hardlinks).
   std::string target;
 
-  uid_t uid = g_uid;
-  gid_t gid = g_gid;
+  uid_t uid = uid_t(-1);
+  gid_t gid = gid_t(-1);
   mode_t mode = 0;
   nlink_t nlink = 1;
 

@@ -53,18 +53,4 @@ struct Bytes : std::span<const std::byte> {
 
 bool Parse(FieldId id, Bytes b, Node* node);
 
-// UNIX extra fields.
-struct ExtraFields : Node {
-  ExtraFields(mode_t const mode = 0)
-      : Node{
-            .ino = 0,
-            .dev = dev_t(-1),
-            .uid = uid_t(-1),
-            .gid = gid_t(-1),
-            .mode = mode,
-        } {}
-
-  bool Parse(FieldId id, Bytes b) { return ::Parse(id, b, this); }
-};
-
 #endif

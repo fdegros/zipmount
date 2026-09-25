@@ -69,8 +69,8 @@ void PrintExtraFields(FieldId id, bool local, Bytes b, mode_t mode) {
   }
   std::println();
 
-  ExtraFields f(mode);
-  if (!f.Parse(id, b)) {
+  Node f{.mode = mode};
+  if (!Parse(id, b, &f)) {
     std::println("      Cannot parse");
     return;
   }

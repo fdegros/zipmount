@@ -66,8 +66,8 @@ std::ostream& operator<<(std::ostream& out, const FileType t) {
 // when it was mounted, not on the archive's own contents, unlike every other
 // node's.
 static const Time g_now = Time::Now();
-const uid_t Node::g_uid = getuid();
-const gid_t Node::g_gid = getgid();
+static const uid_t g_uid = getuid();
+static const gid_t g_gid = getgid();
 mode_t Node::fmask = 0022;
 mode_t Node::dmask = 0022;
 bool Node::enforce_permissions = false;
@@ -166,8 +166,8 @@ Stat Node::GetStat() const {
 #endif
 
   if (enforce_permissions) {
-    z.st_uid = uid;
-    z.st_gid = gid;
+    z.st_uid = uid != uid_t(-1) ? uid : g_uid;
+    z.st_gid = gid != gid_t(-1) ? gid : g_gid;
     z.st_mode = mode;
     switch (GetType()) {
       case FileType::Directory:
