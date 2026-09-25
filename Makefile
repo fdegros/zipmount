@@ -16,6 +16,10 @@
 
 PROJECT = mount-zip
 PKG_CONFIG ?= pkg-config
+OS := $(shell uname -s)
+
+# C++ standard version (override with CXXSTD=20 for older compilers)
+CXXSTD ?= 23
 
 FUSE_MAJOR_VERSION ?= 3
 
@@ -43,8 +47,8 @@ UNIT_TEST_DEPS = gtest gtest_main
 # On macOS, icu4c is keg-only (not symlinked into the default search
 # path). Wire the Homebrew path into PKG_CONFIG_PATH so every pkg-config call
 # in this Makefile resolves the correct version regardless of shell environment.
-ifeq ($(shell uname -s),Darwin)
-  COMMON_CXXFLAGS += -std=gnu++23
+ifeq ($(OS),Darwin)
+  COMMON_CXXFLAGS += -std=gnu++$(CXXSTD)
   BREW_PREFIX := $(shell brew --prefix 2>/dev/null)
   ifneq ($(BREW_PREFIX),)
     PKG_CONFIG = env PKG_CONFIG_PATH="$(BREW_PREFIX)/opt/icu4c/lib/pkgconfig" pkg-config
@@ -55,7 +59,13 @@ ifeq ($(shell uname -s),Darwin)
     FUSE_CXXFLAGS += -DFUSE_DARWIN_ENABLE_EXTENSIONS=0
   endif
 else
-  COMMON_CXXFLAGS += -std=c++23
+  COMMON_CXXFLAGS += -std=c++$(CXXSTD)
+endif
+
+# On FreeBSD, Boost headers installed from the ports are in
+# /usr/local/include and the base Clang does not look there by default.
+ifeq ($(OS),FreeBSD)
+  COMMON_CXXFLAGS += -I/usr/local/include
 endif
 
 PKG_CXXFLAGS += $(shell $(PKG_CONFIG) --cflags $(DEPS) 2>/dev/null)
@@ -68,9 +78,8 @@ UNIT_TEST_PKG_CXXFLAGS := $(shell $(PKG_CONFIG) --cflags $(UNIT_TEST_DEPS) 2>/de
 UNIT_TEST_PKG_LDFLAGS := $(shell $(PKG_CONFIG) --libs $(UNIT_TEST_DEPS) 2>/dev/null)
 endif
 
-COMMON_CXXFLAGS += -Wall -Wextra -Wno-nullability-extension \
-                   -Wno-sign-compare -Wno-missing-field-initializers \
-                   -I. -D_FILE_OFFSET_BITS=64 -D_TIME_BITS=64 $(FUSE_CXXFLAGS)
+COMMON_CXXFLAGS += -Wall -Wextra -Wno-missing-field-initializers -Wno-sign-compare -I.
+COMMON_CXXFLAGS += -D_FILE_OFFSET_BITS=64 -D_TIME_BITS=64 $(FUSE_CXXFLAGS)
 
 ifeq ($(DEBUG), 1)
 COMMON_CXXFLAGS += -O0 -g
@@ -211,7 +220,7 @@ release:
 
 $(MAN): README.md
 	pandoc $< -s -t man | \
-	sed -e 's/^\.IP \\\[bu\]/.PD 0\n.IP \\\[bu\]/g' \
+	sed -e 's/^\.IP \\(bu/.PD 0\n.IP \\(bu/g' \
 	    -e 's/^\.SH/.PD\n.SH/g' \
 	    -e 's/^\.SS/.PD\n.SS/g' \
 	    -e 's/^\.PP/.PD\n.PP/g' \
@@ -248,4 +257,4 @@ tests/data/deep.zip: tests/make_deep.py
 tests/data/many_nodes.zip: tests/make_many_nodes.py
 	python3 tests/make_many_nodes.py
 
-.PHONY: all check check-fast check-format clean clean-data doc format install install-strip release test uninstall unit_tests utils valgrind
+.PHONY: all check check-fast check-format clean clean-data coverage doc format install install-strip release test uninstall unit_tests utils valgrind

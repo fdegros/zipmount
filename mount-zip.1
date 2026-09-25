@@ -7,11 +7,14 @@
 \f[B]mount\-zip\f[R] \- Mount ZIP archives as FUSE file systems.
 .PD
 .SH SYNOPSIS
+.PD 0
 .IP \(bu 2
 \f[B]mount\-zip\f[R] [\f[I]options\f[R]] \f[I]zip\-file\f[R]
+.PD 0
 .IP \(bu 2
 \f[B]mount\-zip\f[R] [\f[I]options\f[R]] \f[I]zip\-file\f[R]
 \f[I]mount\-point\f[R]
+.PD 0
 .IP \(bu 2
 \f[B]mount\-zip\f[R] [\f[I]options\f[R]] \f[I]zip\-file\-1\f[R]
 \f[I]zip\-file\-2\f[R] \&...
@@ -114,6 +117,10 @@ Hide symbolic links.
 Hide hard links.
 .PD
 .TP
+\f[B]\-o noatime\f[R]
+Don\(cqt update access times.
+.PD
+.TP
 \f[B]\-o dmask=M\f[R]
 Directory permission mask in octal (default 0022).
 .PD
@@ -173,58 +180,83 @@ $ umount mnt
 .EE
 .PD
 .SH FEATURES
+.PD 0
 .IP \(bu 2
 Read\-only view
+.PD 0
 .IP \(bu 2
 Instant mounting, even with big ZIP archives
+.PD 0
 .IP \(bu 2
 Compression methods: deflate, bzip2
+.PD 0
 .IP \(bu 2
 Encryption methods: AES and legacy ZIP encryption
+.PD 0
 .IP \(bu 2
 Asks for decryption password if necessary
+.PD 0
 .IP \(bu 2
 Detects file name encoding
+.PD 0
 .IP \(bu 2
 Converts file names to Unicode UTF\-8
+.PD 0
 .IP \(bu 2
 Deduplicates files in case of name collisions
+.PD 0
 .IP \(bu 2
 Unpacks files when reading them (on\-the\-go decompression)
+.PD 0
 .IP \(bu 2
 Supports all file types, including named sockets, FIFOs, block and
 character devices, symbolic links and hard links
+.PD 0
 .IP \(bu 2
 Supports Unix access modes and DOS file permissions
+.PD 0
 .IP \(bu 2
 Supports owner and group information (UID and GID)
+.PD 0
 .IP \(bu 2
 Supports relative and absolute paths
+.PD 0
 .IP \(bu 2
 Supports high\-precision timestamps
+.PD 0
 .IP \(bu 2
 Works on 32\-bit and 64\-bit devices
+.PD 0
 .IP \(bu 2
 Supports ZIP64 extensions, even on 32\-bit devices:
 .RS 2
+.PD 0
 .IP \(bu 2
 Supports ZIP archives containing more than 65,535 files
+.PD 0
 .IP \(bu 2
 Supports ZIP archives and files bigger than 4 GB
 .RE
+.PD 0
 .IP \(bu 2
 Supports the following ZIP format extensions:
 .RS 2
+.PD 0
 .IP \(bu 2
 000A PKWARE NTFS high\-precision timestamps
+.PD 0
 .IP \(bu 2
 000D PKWARE Unix file type
+.PD 0
 .IP \(bu 2
 5455 Unix timestamps
+.PD 0
 .IP \(bu 2
 5855 Info\-ZIP Unix extra fields (type 1)
+.PD 0
 .IP \(bu 2
 7855 Info\-ZIP Unix extra fields (type 2)
+.PD 0
 .IP \(bu 2
 7875 Info\-ZIP Unix extra fields (type 3): UID and GID
 .RE
@@ -240,26 +272,37 @@ needs to determine their original encoding.
 By default \f[B]mount\-zip\f[R] tries to guess this encoding using the
 detection feature provided by the ICU library.
 It can automatically recognize the following encodings:
+.PD 0
 .IP \(bu 2
 UTF\-8
+.PD 0
 .IP \(bu 2
 CP437
+.PD 0
 .IP \(bu 2
 Shift JIS
+.PD 0
 .IP \(bu 2
 Big5
+.PD 0
 .IP \(bu 2
 EUC\-JP
+.PD 0
 .IP \(bu 2
 EUC\-KR
+.PD 0
 .IP \(bu 2
 GB18030
+.PD 0
 .IP \(bu 2
 ISO\-2022\-CN
+.PD 0
 .IP \(bu 2
 ISO\-2022\-JP
+.PD 0
 .IP \(bu 2
 ISO\-2022\-KR
+.PD 0
 .IP \(bu 2
 KOI8\-R
 .PD
@@ -632,8 +675,10 @@ It can be used with both lazy and pre\-emptive caching strategies.
 The \f[CR]\-o force\f[R] option allows \f[B]mount\-zip\f[R] to continue
 mounting a ZIP archive even if some errors are encountered.
 This includes:
+.PD 0
 .IP \(bu 2
 Wrong or missing decryption passwords.
+.PD 0
 .IP \(bu 2
 Unsupported compression or encryption methods.
 .PD
@@ -1066,11 +1111,13 @@ T}
 .TE
 .PD
 .SH AUTHORS
+.PD 0
 .IP \(bu 2
 \c
 .UR https://github.com/fdegros
 François Degros
 .UE \c
+.PD 0
 .IP \(bu 2
 \c
 .UR http://galanin.nnov.ru/~al/
