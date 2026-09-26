@@ -21,7 +21,14 @@ jobs:
             pkg-config libgtest-dev \
             python3 mount
       - name: Build and test
-        run: make check-fast
+        run: |
+          make check-fast ASAN=1 UBSAN=1 DEBUG=1
+          make clean
+          make check-fast ASAN=1 UBSAN=1
+          make clean
+          make check-fast
+          # Just make sure that the utilities can be built
+          make utils
 
   macos:
     # Native macOS VM. This only verifies that mount-zip compiles and that
