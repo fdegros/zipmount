@@ -82,6 +82,25 @@ TEST(ExtraFieldTest, TimestampNegative) {
   EXPECT_EQ(f.btime.tv_nsec, 0);
 }
 
+// The same raw bytes as TimestampNegative above, but this time node->mtime
+// already holds an ordinary (not DOS-floor-clamped) date before Parse() is
+// called, so a timestamp with the top bit set should be read as a plain
+// unsigned truncation of a post-2038 date, not a pre-1970 one.
+TEST(ExtraFieldTest, TimestampUnsigned) {
+  const u8 data[] = {1 | 2 | 4,                     //
+                     0xFE,      0xFF, 0xFF, 0xFF,   // mtime = 2^32 - 2
+                     0x9C,      0xFF, 0xFF, 0xFF,   // atime = 2^32 - 100
+                     0x38,      0xFF, 0xFF, 0xFF};  // btime = 2^32 - 200
+  Node f{.mtime = 2000000000};
+  EXPECT_TRUE(Parse(FieldId::UNIX_TIMESTAMP, data, &f));
+  EXPECT_EQ(f.mtime.tv_sec, 4294967294);
+  EXPECT_EQ(f.mtime.tv_nsec, 0);
+  EXPECT_EQ(f.atime.tv_sec, 4294967196);
+  EXPECT_EQ(f.atime.tv_nsec, 0);
+  EXPECT_EQ(f.btime.tv_sec, 4294967096);
+  EXPECT_EQ(f.btime.tv_nsec, 0);
+}
+
 // Parse PKWARE Unix Extra Field - regular file
 TEST(ExtraFieldTest, UnixPkwareRegular) {
   const u8 data[] = {

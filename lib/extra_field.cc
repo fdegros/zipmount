@@ -114,8 +114,10 @@ T ReadVariableLength(Bytes& b) {
 // Reads a 32-bit Unix timestamp. Per the Info-Zip UT/UX and PKWARE-Unix
 // extra field specs, these are signed (to allow pre-1970 dates), so this
 // must sign-extend rather than zero-extend into the wider time_t.
-time_t ReadTime32(Bytes& b) {
-  return static_cast<time_t>(static_cast<i32>(Read<u32>(b)));
+time_t ReadTime32(Bytes& b, bool const as_unsigned) {
+  const u32 t = Read<u32>(b);
+  return as_unsigned ? static_cast<time_t>(t)
+                     : static_cast<time_t>(static_cast<i32>(t));
 }
 
 timespec ntfs2timespec(i64 const t) {
@@ -156,33 +158,37 @@ timespec ntfs2timespec(i64 const t) {
 bool Parse(FieldId const id, Bytes b, Node* const node) try {
   assert(node);
 
+  // A "simple" timestamp past 1980.
+  constexpr mode_t threshold = mode_t(1) << 29;
+  const bool as_unsigned = node->mtime.tv_sec >= threshold;
+
   switch (id) {
     case FieldId::UNIX_TIMESTAMP: {
       const u8 flags = Read<u8>(b);
 
       if (flags & 1) {
-        node->mtime = ReadTime32(b);
+        node->mtime = ReadTime32(b, as_unsigned);
         if (b.empty()) {
           return true;
         }
       }
 
       if (flags & 2) {
-        node->atime = ReadTime32(b);
+        node->atime = ReadTime32(b, as_unsigned);
       }
 
       if (flags & 4) {
         // Info-ZIP's own spec calls this third value "creation time", not
         // POSIX ctime (inode change time), which ZIP has no way to record.
-        node->btime = ReadTime32(b);
+        node->btime = ReadTime32(b, as_unsigned);
       }
 
       return true;
     }
 
     case FieldId::INFOZIP_UNIX_1:
-      node->atime = ReadTime32(b);
-      node->mtime = ReadTime32(b);
+      node->atime = ReadTime32(b, as_unsigned);
+      node->mtime = ReadTime32(b, as_unsigned);
       [[fallthrough]];
 
     case FieldId::INFOZIP_UNIX_2:
@@ -205,8 +211,8 @@ bool Parse(FieldId const id, Bytes b, Node* const node) try {
       return true;
 
     case FieldId::PKWARE_UNIX:
-      node->atime = ReadTime32(b);
-      node->mtime = ReadTime32(b);
+      node->atime = ReadTime32(b, as_unsigned);
+      node->mtime = ReadTime32(b, as_unsigned);
       node->uid = Read<u16>(b);
       node->gid = Read<u16>(b);
 

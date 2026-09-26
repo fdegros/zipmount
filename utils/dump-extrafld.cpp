@@ -39,7 +39,11 @@ void PrintTime(const char* const label, const Time& ts) {
   }
 }
 
-void PrintExtraFields(FieldId id, bool local, Bytes b, mode_t mode) {
+void PrintExtraFields(FieldId id,
+                      bool local,
+                      Bytes b,
+                      mode_t mode,
+                      time_t mtime) {
   std::print("    ");
   switch (id) {
 #define PRINT(s)    \
@@ -69,7 +73,7 @@ void PrintExtraFields(FieldId id, bool local, Bytes b, mode_t mode) {
   }
   std::println();
 
-  Node f{.mode = mode};
+  Node f{.mtime = mtime, .mode = mode};
   if (!Parse(id, b, &f)) {
     std::println("      Cannot parse");
     return;
@@ -365,7 +369,8 @@ int main(int argc, char** argv) {
           zip_uint16_t id, len;
           const auto* const data =
               zip_file_extra_field_get(z.get(), i, j, &id, &len, flags);
-          PrintExtraFields(FieldId(id), local, Bytes(data, len), mode);
+          PrintExtraFields(FieldId(id), local, Bytes(data, len), mode,
+                           stat.mtime);
         }
       }
     }
