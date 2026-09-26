@@ -516,8 +516,8 @@ def GenerateReferenceData():
     pprint.pprint(all_zips, compact=True, sort_dicts=False)
 
 
-# Tests most of the ZIP files in data_dir using default mounting options.
-def TestArchiveWithDefaultOptions():
+# Tests most of the archive files in data_dir.
+def TestArchives(options=[]):
     want_trees = {
         'absolute-path.zip': {
             '.': {
@@ -1649,7 +1649,7 @@ def TestArchiveWithDefaultOptions():
     }
 
     for zip_name, want_tree in want_trees.items():
-        MountArchiveAndCheckTree(zip_name, want_tree, options=['-o', 'force'])
+        MountArchiveAndCheckTree(zip_name, want_tree, options=[*options, '-o', 'force'])
 
 
 # Tests mounting several ZIPs at the same time.
@@ -2624,7 +2624,7 @@ def TestEncryptedArchive():
 
 
 # Tests mounting ZIP with explicit file name encoding.
-def TestArchiveFileNameEncoding():
+def TestFileNameEncoding():
     want_tree = {
         '.': {
             'ino': 1,
@@ -2696,7 +2696,7 @@ def TestArchiveFileNameEncoding():
 
 
 # Tests the nosymlinks, nohardlinks and nospecials mount options.
-def TestArchiveWithSpecialFiles():
+def TestSpecialFiles():
     zip_name = 'pkware-specials.zip'
 
     want_tree = {
@@ -3259,9 +3259,15 @@ def TestInvalidArchive():
         CheckArchiveMountingError(f.name, 21 if os.getuid() != 0 else 29)
 
 
-TestArchiveWithDefaultOptions()
-TestArchiveFileNameEncoding()
-TestArchiveWithSpecialFiles()
+TestArchives()
+TestArchives(['-o', 'nocache'])
+TestArchives(['-o', 'precache'])
+if has_memcache:
+    TestArchives(['-o', 'memcache'])
+    TestArchives(['-o', 'precache,memcache'])
+
+TestFileNameEncoding()
+TestSpecialFiles()
 TestEncryptedArchive()
 TestInvalidArchive()
 TestMasks()
