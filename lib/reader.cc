@@ -243,10 +243,29 @@ class CacheFileReader : public UnbufferedReader {
     }
 #else
     if (const int err = posix_fallocate(cache_file_, offset, expected_size_)) {
-      errno = err;  // posix_fallocate doesn't set errno
-      ThrowSystemError("Cannot reserve ", expected_size_,
-                       " bytes in cache file ", cache_file_, " at offset ",
-                       offset);
+      // Some filesystems, such as FreeBSD's tmpfs, don't support
+      // preallocating space at all. This is just an optimization hint to
+      // reduce fragmentation: pwrite() will still grow the file lazily as
+      // needed, so it's fine to skip the actual preallocation. But
+      // posix_fallocate() would also have extended the file's reported size
+      // to offset + expected_size_ on success, and ReserveSpace()'s callers
+      // rely on that size (via the next fstat() call) to avoid overlapping
+      // this entry's region with the next one, even if this entry never
+      // gets fully written. Use ftruncate() to get the same size guarantee.
+      if (err != ENOTSUP) {
+        errno = err;  // posix_fallocate doesn't set errno
+        ThrowSystemError("Cannot reserve ", expected_size_,
+                         " bytes in cache file ", cache_file_, " at offset ",
+                         offset);
+      }
+
+      LOG(DEBUG) << "Cache file " << cache_file_
+                 << " doesn't support preallocation";
+
+      if (ftruncate(cache_file_, offset + expected_size_) < 0) {
+        ThrowSystemError("Cannot resize cache file ", cache_file_, " to ",
+                         offset + expected_size_);
+      }
     }
 #endif
 
