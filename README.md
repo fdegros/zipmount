@@ -5,26 +5,34 @@ header: User Manual
 footer: mount-zip 1.17
 date: August 2026
 ---
+
 # NAME
 
-**mount-zip** - Mount ZIP archives as FUSE file systems.
+**mount-zip** - Mount ZIP archives as a read-only FUSE file system.
 
 # SYNOPSIS
 
-*   **mount-zip** [*options*] *zip-file*
-*   **mount-zip** [*options*] *zip-file* *mount-point*
-*   **mount-zip** [*options*] *zip-file-1* *zip-file-2* ... *mount-point*
+* **mount-zip** [*options*] *archive* [*mount_point*]
+* **mount-zip** [*options*] *archive* ... *mount_point*
 
 # DESCRIPTION
 
 **mount-zip** mounts one or several ZIP archives as a read-only
-[FUSE file system](https://en.wikipedia.org/wiki/Filesystem_in_Userspace). It
+[FUSE](https://en.wikipedia.org/wiki/Filesystem_in_Userspace) file system. It
 starts quickly, uses little memory, decodes encrypted files, and provides
 on-the-go decompression and caching for maximum efficiency.
 
-**mount-zip** automatically creates the target mount point if needed. If no
-mount point is specified, **mount-zip** creates a mount point in the current
-working directory.
+**mount-zip** automatically creates the target mount point if needed and
+automatically removes it when the file system is unmounted. If the mount point
+already existed before **mount-zip** was started, it is not removed.
+
+If no mount point is specified, **mount-zip** uses the name of the archive
+(without its filename extension) as a mount point in the current working
+directory. If that directory already exists, it will try to create one with a
+numeric suffix (e.g., `archive (1)`).
+
+**mount-zip** is continuously tested on Linux and FreeBSD, including mounting
+real archives, and verified to build on macOS.
 
 # OPTIONS
 
@@ -32,13 +40,13 @@ working directory.
 :   Print help.
 
 **-\-version** or **-V**
-:   Print program version.
+:   Print version info.
 
 **-o quiet** or **-q**
 :   Print fewer log messages.
 
 **-o verbose** or **-v**
-:   Print more detailed log messages.
+:   Print more log messages.
 
 **-o redact**
 :   Redact file names from log messages.
@@ -54,7 +62,7 @@ working directory.
 :   Use a different cache directory (default is `$TMPDIR` or `/tmp`).
 
 **-o memcache**
-:   Cache the decompressed data in memory.
+:   Caching in memory (Linux and FreeBSD only).
 
 **-o nocache**
 :   Do not cache the decompressed data.
@@ -256,12 +264,12 @@ $ mount-zip file-dir-same-name.zip mnt
 $ tree -F mnt
 mnt
 ├── pet/
-│   ├── cat/
-│   │   ├── fish/
-│   │   ├── fish (1)
-│   │   └── fish (2)
-│   ├── cat (1)
-│   └── cat (2)
+│   ├── cat/
+│   │   ├── fish/
+│   │   ├── fish (1)
+│   │   └── fish (2)
+│   ├── cat (1)
+│   └── cat (2)
 ├── pet (1)
 └── pet (2)
 
@@ -522,7 +530,7 @@ changed with the `-o cache=DIR` option.
 The `-o memcache` option instructs **mount-zip** to store the cache in RAM
 instead of a temporary file. This provides the highest performance but can
 consume a large amount of memory. It can be used with both lazy and pre-emptive
-caching strategies.
+caching strategies. This option is only available on Linux and FreeBSD.
 
 # ADVANCED OPTIONS
 
@@ -759,26 +767,24 @@ The original **fuse-zip** project was created in 2008 by
 The **mount-zip** project was then forked from **fuse-zip** in 2021 and further
 developed by [François Degros](https://github.com/fdegros). The ability to write
 and modify ZIP archives has been removed, but a number of optimizations and
-features have been added:
+features have been added.
 
-Feature                       | **mount-zip** | **fuse-archive** | **fuse-zip**
-:---------------------------- | :-----------: | :--------------: | :---------:
-Read-Write Mode               | ❌             | ❌                | ✅
-Read-Only Mode                | ✅             | ✅                | ✅
-Format Support            | ZIP           | Wide             | ZIP
-GPG Encryption            | ❌             | ✅                | ❌
-Native ZIP Encryption     | ✅             | ✅                | ✅
-Lazy Decompression        | ✅             | ✅                | ❌
-Default Caching           | Lazy          | Pre-emptive      | N/A
-Memory Caching            | ✅             | ✅                | ✅
-Temp File Caching         | ✅             | ✅                | ❌
-Handles Huge Files        | ✅             | ✅                | ❌
-Sparse File Detection     | ❌             | ✅                | ❌
-Precision Timestamps      | ✅             | ✅                | ✅
-Several Archives          | ✅             | ✅                | ❌
-Automatic Mount Point     | ✅             | ✅                | ❌
-FUSE 3 Support            | ✅             | ✅                | ❌
-Distinct Error Codes      | ✅             | ✅                | ❌
+Feature               | **mount-zip** | **fuse-archive** | **fuse-zip**
+:-------------------- | :-----------: | :--------------: | :----------:
+Read-Write Mode       | ❌            | ❌               | ✅
+Format Support        | ZIP           | Wide             | ZIP
+GPG Encryption        | ❌            | ✅               | ❌
+Native ZIP Encryption | ✅            | ✅               | ✅
+Lazy Decompression    | ✅            | ✅               | ❌
+Default Caching       | Lazy          | Pre-emptive      | N/A
+Memory Caching        | ✅            | ✅               | ✅
+Temp File Caching     | ✅            | ✅               | ❌
+Handles Huge Files    | ✅            | ✅               | ❌
+Sparse File Detection | ❌            | ✅               | ❌
+Several Archives      | ✅            | ✅               | ❌
+Automatic Mount Point | ✅            | ✅               | ❌
+FUSE 3 Support        | ✅            | ✅               | ❌
+Distinct Error Codes  | ✅            | ✅               | ❌
 
 # AUTHORS
 
@@ -792,4 +798,5 @@ later.
 
 # SEE ALSO
 
-fuse-archive(1), fuse-zip(1), fusermount(1), fuse(8), umount(8)
+archivemount(1), fuse-archive(1), fuse-zip(1), fusermount(1), fuse(8),
+rar2fs(1), umount(8)

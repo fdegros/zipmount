@@ -98,11 +98,9 @@ void PrintUsage() {
 
 Usage:
     )" PROGRAM_NAME
-         R"( [options] zip-file
+         R"( [options] archive [mount_point]
     )" PROGRAM_NAME
-         R"( [options] zip-file mount-point
-    )" PROGRAM_NAME
-         R"( [options] zip-file-1 zip-file-2 ... mount-point
+         R"( [options] archive... mount_point
 
 General options:
     -h   --help            print help
@@ -113,9 +111,13 @@ General options:
     -o force               mount ZIP even if password is wrong or missing, or
                            if the encryption or compression method is unsupported
     -o precache            preemptively decompress and cache data
+    -o nocache             no caching of uncompressed data)"
+#if defined(__linux__) || defined(__FreeBSD__)
+         R"(
+    -o memcache            caching in memory)"
+#endif
+         R"(
     -o cache=DIR           cache dir (default is $TMPDIR or /tmp)
-    -o memcache            cache decompressed data in memory
-    -o nocache             no caching of decompressed data
     -o dmask=M             directory permission mask in octal (default 0022)
     -o fmask=M             file permission mask in octal (default 0022)
     -o encoding=CHARSET    original encoding of file names
@@ -736,8 +738,10 @@ int main(int argc, char* argv[]) try {
       FUSE_OPT_KEY("force", KEY_FORCE),
       FUSE_OPT_KEY("--precache", KEY_PRE_CACHE),
       FUSE_OPT_KEY("precache", KEY_PRE_CACHE),
+#if defined(__linux__) || defined(__FreeBSD__)
       FUSE_OPT_KEY("--memcache", KEY_MEM_CACHE),
       FUSE_OPT_KEY("memcache", KEY_MEM_CACHE),
+#endif
       FUSE_OPT_KEY("--nocache", KEY_NO_CACHE),
       FUSE_OPT_KEY("nocache", KEY_NO_CACHE),
       FUSE_OPT_KEY("nomerge", KEY_NO_MERGE),

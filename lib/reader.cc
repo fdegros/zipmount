@@ -146,36 +146,35 @@ class CacheFileReader : public UnbufferedReader {
       case CacheStrategy::InMemory:
         // Create an in-memory anonymous file.
         {
-#if __APPLE__
-          // macOS has no memfd_create()
-          FileDescriptor file(
-              shm_open("/cache", O_RDWR | O_CREAT | O_EXCL, 0600));
-          if (!file.IsValid()) {
-            ThrowSystemError("Cannot create cache file in memory");
+          errno = ENOSYS;
+
+#if defined(__linux__) || defined(__FreeBSD__)
+          FileDescriptor fd(memfd_create("mount-zip", MFD_CLOEXEC));
+          if (fd.IsValid()) {
+            LOG(DEBUG) << "Created memory-backed cache file (memfd_create)";
+            return fd;
           }
-          LOG(DEBUG) << "Created cache file in memory (shm_open)";
-          if (shm_unlink("/cache") < 0) {
-            ThrowSystemError("Cannot unlink cache file in memory");
-          }
-#else
-          FileDescriptor file(memfd_create("cache", 0));
-          if (!file.IsValid()) {
-            ThrowSystemError("Cannot create cache file in memory");
-          }
-          LOG(DEBUG) << "Created cache file in memory (memfd_create)";
 #endif
-          return file;
+
+          // Other platforms' shm_open (anonymous or named, e.g. macOS) requires
+          // ftruncate to a known size before any write and cannot auto-extend
+          // like Linux memfd or a regular file, so it's unsuitable for this
+          // cache file's simple sequential-write growth pattern: the final size
+          // isn't known upfront, and retrofitting ftruncate-before- each-write
+          // would mean touching every write call site, not just this function.
+          PLOG(ERROR) << "Cannot create memory-backed cache file";
+          ThrowSystemError("Cannot create memory-backed cache file");
         }
 
       default:
       case CacheStrategy::InFile:
 #ifdef O_TMPFILE
         // Create a cache file in the cache dir.
-        if (FileDescriptor file(
+        if (FileDescriptor fd(
                 open(cache_dir_.c_str(), O_TMPFILE | O_RDWR | O_EXCL, 0));
-            file.IsValid()) {
+            fd.IsValid()) {
           LOG(DEBUG) << "Created anonymous cache file in " << Path(cache_dir_);
-          return file;
+          return fd;
         }
 
         if (errno != ENOTSUP) {
@@ -195,9 +194,9 @@ class CacheFileReader : public UnbufferedReader {
 
         std::string path = cache_dir_;
         Path::Append(&path, "XXXXXX");
-        FileDescriptor file(mkstemp(path.data()));
+        FileDescriptor fd(mkstemp(path.data()));
 
-        if (!file.IsValid()) {
+        if (!fd.IsValid()) {
           ThrowSystemError("Cannot create named cache file in ",
                            Path(cache_dir_));
         }
@@ -208,7 +207,7 @@ class CacheFileReader : public UnbufferedReader {
           ThrowSystemError("Cannot unlink cache file ", Path(path));
         }
 
-        return file;
+        return fd;
     }
   }
 
