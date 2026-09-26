@@ -1,3 +1,20 @@
+	* Unreleased:
+	- Report real creation time (btime) and accurate last-access time (atime),
+	using statx() on Linux
+	- Fix parsing of NTFS timestamps: a zero FILETIME component (meaning
+	"not set") was wrongly rejected as invalid, discarding the whole field
+	- Fix sign handling in Unix-time extra fields
+	(https://github.com/fdegros/zipmount/issues/3)
+	- Fix handling of pre-1970 NTFS timestamps
+	(https://github.com/fdegros/zipmount/issues/4)
+	- Report the runtime libzip version
+	- Don't trust zip_file_is_seekable() with libzip <= 1.11.4
+	(https://github.com/fdegros/zipmount/issues/1, caused by
+	https://github.com/nih-at/libzip/issues/583)
+	- Fix FreeBSD build (missing sys/sysmacros.h)
+	- Simplify --version output
+	- Add GitHub Actions CI
+
 2026-08-03 François Degros <fdegros@chromium.org>
 
 	* Released mount-zip 1.16:
