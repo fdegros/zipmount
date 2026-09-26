@@ -1,4 +1,6 @@
-	* Unreleased:
+2026-09-26 François Degros <fdegros@chromium.org>
+
+	* Released mount-zip 1.18:
 	- Report real creation time (btime) and accurate last-access time (atime),
 	using statx() on Linux
 	- Fix parsing of NTFS timestamps: a zero FILETIME component (meaning
@@ -14,6 +16,10 @@
 	- Fix FreeBSD build (missing sys/sysmacros.h)
 	- Simplify --version output
 	- Add GitHub Actions CI
+	- Restrict -o memcache to Linux and FreeBSD, and reject it upfront on
+	other platforms instead of failing later during file I/O
+	- Fix -o precache aborting the mount on filesystems that don't support
+	posix_fallocate(), such as FreeBSD's tmpfs
 
 2026-08-03 François Degros <fdegros@chromium.org>
 
