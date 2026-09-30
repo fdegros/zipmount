@@ -55,24 +55,19 @@ jobs:
 
   freebsd:
     # GitHub has no native FreeBSD runner. vmactions/freebsd-vm boots a real
-    # FreeBSD guest (nested virtualization is only enabled on macOS hosts on
-    # GitHub-hosted runners). Unlike macOS, FreeBSD's fusefs kernel module
+    # FreeBSD guest via nested KVM virtualization, which GitHub's Linux
+    # runners do support (see libfuse and rmlint's own FreeBSD CI, both
+    # using ubuntu-latest for this same job shape) - trying that here
+    # instead of macos-latest. Unlike macOS, FreeBSD's fusefs kernel module
     # loads without any interactive consent step, so the full functional
     # test suite runs here too.
-    runs-on: macos-latest
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - name: Build and test in FreeBSD VM
         uses: vmactions/freebsd-vm@v1
         with:
           usesh: true
-          # The default rsync-based sync hits a protocol mismatch between
-          # macOS's old bundled rsync (the action's host) and FreeBSD's
-          # newer one ("unexpected end of file"). sshfs (tried first) was
-          # itself unreliable here (mount kept dropping: "remote host has
-          # disconnected"), so try nfs instead - the action's other live
-          # mount option.
-          sync: nfs
           prepare: |
             pkg install -y pkgconf boost-libs icu libzip fusefs-libs3 \
               googletest python3 gmake
