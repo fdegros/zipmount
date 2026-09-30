@@ -1101,6 +1101,21 @@ T}@T{
 T}
 .TE
 .PD
+.SH BUGS
+\f[B]mount\-zip\f[R] relies on \f[B]libzip\f[R] to read ZIP archives,
+and therefore inherits some of its limitations and bugs.
+For example, \f[B]libzip\f[R] cannot open a ZIP archive that has extra
+data prepended to it, such as a self\-extracting archive or a Chrome
+extension (\f[CR].crx\f[R]) file (\c
+.UR https://github.com/nih-at/libzip/issues/215
+libzip#215
+.UE \c
+; a fix has been proposed in \c
+.UR https://github.com/nih-at/libzip/pull/582
+libzip#582
+.UE \c
+).
+.PD
 .SH AUTHORS
 .PD 0
 .IP \(bu 2

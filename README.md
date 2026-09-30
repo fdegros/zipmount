@@ -786,6 +786,15 @@ Automatic Mount Point | ✅            | ✅               | ❌
 FUSE 3 Support        | ✅            | ✅               | ❌
 Distinct Error Codes  | ✅            | ✅               | ❌
 
+# BUGS
+
+**mount-zip** relies on **libzip** to read ZIP archives, and therefore
+inherits some of its limitations and bugs. For example, **libzip** cannot open
+a ZIP archive that has extra data prepended to it, such as a self-extracting
+archive or a Chrome extension (`.crx`) file
+([libzip#215](https://github.com/nih-at/libzip/issues/215); a fix has been
+proposed in [libzip#582](https://github.com/nih-at/libzip/pull/582)).
+
 # AUTHORS
 
 *   [François Degros](https://github.com/fdegros)
